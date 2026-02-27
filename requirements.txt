@@ -1,0 +1,5 @@
+flask>=2.0.0
+flask-cors>=3.0.0
+markdown>=3.4.0
+pygments>=2.15.0
+matplotlib>=3.5.0

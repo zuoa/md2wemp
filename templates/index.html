@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MD2HTML - Markdown 转微信公众号工具</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" id="codeThemeLink" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
+</head>
+<body>
+    <div class="app">
+        <!-- Header -->
+        <header class="header">
+            <div class="logo">
+                <svg class="logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/>
+                    <polyline points="14 2 14 8 20 8"/>
+                    <line x1="16" y1="13" x2="8" y2="13"/>
+                    <line x1="16" y1="17" x2="8" y2="17"/>
+                    <line x1="10" y1="9" x2="8" y2="9"/>
+                </svg>
+                <span class="logo-text">MD<span>2</span>HTML</span>
+            </div>
+            <div class="header-actions">
+                <button class="btn btn-outline" id="settingsBtn" title="设置 (Ctrl+,)">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="3"></circle>
+                        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                    </svg>
+                    设置
+                </button>
+                <button class="btn btn-primary" id="copyBtn" title="复制 HTML (Ctrl+S)">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                    </svg>
+                    复制 HTML
+                </button>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main">
+            <!-- Editor Panel -->
+            <div class="editor-panel" id="editorPanel">
+                <div class="panel-header">
+                    <span class="panel-title">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/>
+                            <polyline points="14 2 14 8 20 8"/>
+                        </svg>
+                        Markdown
+                    </span>
+                    <div class="panel-actions">
+                        <button class="btn-icon" id="clearBtn" title="清空内容">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="3 6 5 6 21 6"></polyline>
+                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                            </svg>
+                        </button>
+                        <button class="btn-icon" id="downloadBtn" title="下载 HTML">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                <polyline points="7 10 12 15 17 10"></polyline>
+                                <line x1="12" y1="15" x2="12" y2="3"></line>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+                <div class="editor-wrapper">
+                    <textarea id="editor" placeholder="在此输入 Markdown 内容..." spellcheck="false"></textarea>
+                </div>
+                <div class="stats-bar">
+                    <span class="stat-item">
+                        字数 <span class="stat-value" id="charCount">0</span>
+                    </span>
+                    <span class="stat-item">
+                        字符 <span class="stat-value" id="totalCount">0</span>
+                    </span>
+                    <span class="stat-item">
+                        行数 <span class="stat-value" id="lineCount">0</span>
+                    </span>
+                </div>
+            </div>
+
+            <!-- Resizer -->
+            <div class="resizer" id="resizer"></div>
+
+            <!-- Preview Panel -->
+            <div class="preview-panel" id="previewPanel">
+                <div class="panel-header">
+                    <span class="panel-title">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                            <circle cx="12" cy="12" r="3"></circle>
+                        </svg>
+                        预览
+                    </span>
+                    <div class="panel-actions">
+                        <div class="preview-mode-toggle" id="previewModeToggle">
+                            <button class="mode-btn active" data-mode="pc" title="PC端预览">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+                                    <line x1="8" y1="21" x2="16" y2="21"></line>
+                                    <line x1="12" y1="17" x2="12" y2="21"></line>
+                                </svg>
+                            </button>
+                            <button class="mode-btn" data-mode="mobile" title="移动端预览">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect>
+                                    <line x1="12" y1="18" x2="12.01" y2="18"></line>
+                                </svg>
+                            </button>
+                        </div>
+                        <span class="theme-badge" id="currentThemeBadge">默认主题</span>
+                    </div>
+                </div>
+                <div class="preview-wrapper">
+                    <div id="preview"></div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Settings Panel -->
+        <div class="settings-overlay" id="settingsOverlay"></div>
+        <div class="settings-panel" id="settingsPanel">
+            <div class="settings-header">
+                <h2>设置</h2>
+                <button class="btn-close" id="closeSettings" aria-label="关闭">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+            </div>
+            <div class="settings-content">
+                <!-- Theme Section -->
+                <div class="settings-section">
+                    <h3 class="section-title">主题风格</h3>
+                    <div class="theme-grid" id="themeGrid">
+                        {% for key, theme in themes.items() %}
+                        <div class="theme-card" data-theme="{{ key }}"
+                             style="background-color: {{ theme.styles.bg_color }}; border-radius: {{ theme.styles.border_radius }}; color: {{ theme.card_text_color }};">
+                            <div class="theme-colors">
+                                {% for color in theme.colors %}
+                                <span class="color-dot" style="background-color: {{ color }}"></span>
+                                {% endfor %}
+                            </div>
+                            <span class="theme-name" style="color: {{ theme.card_text_color }};">{{ theme.name }}</span>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <!-- Code Theme Section -->
+                <div class="settings-section">
+                    <h3 class="section-title">代码高亮</h3>
+                    <div class="code-theme-grid" id="codeThemeGrid">
+                        {% for key, config in code_themes.items() %}
+                        <div class="code-theme-item" data-code-theme="{{ key }}">{{ config.name }}</div>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <!-- Font Size Section -->
+                <div class="settings-section">
+                    <h3 class="section-title">字体大小</h3>
+                    <div class="font-size-options" id="fontSizeOptions">
+                        {% for key, config in font_sizes.items() %}
+                        <div class="radio-option" data-font-size="{{ key }}">
+                            <div class="radio-indicator"></div>
+                            <div class="option-content">
+                                <span class="option-label">{{ config.name }}</span>
+                                <span class="option-desc">{{ config.desc }}</span>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <!-- Background Section -->
+                <div class="settings-section">
+                    <h3 class="section-title">导出背景</h3>
+                    <div class="background-options" id="backgroundOptions">
+                        {% for key, config in backgrounds.items() %}
+                        <div class="radio-option" data-background="{{ key }}">
+                            <div class="radio-indicator"></div>
+                            <div class="option-content">
+                                <span class="option-label">{{ config.name }}</span>
+                                <span class="option-desc">{{ config.desc }}</span>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <!-- API Section -->
+                <div class="settings-section">
+                    <h3 class="section-title">API 调用</h3>
+                    <div class="api-info">
+                        <div class="api-endpoint">
+                            <code>POST /api/convert</code>
+                            <button class="btn-copy-api" id="copyApiEndpoint">复制</button>
+                        </div>
+                        <pre class="api-example">{
+  "markdown": "# Hello World",
+  "theme": "default",
+  "code_theme": "github",
+  "font_size": "medium",
+  "background": "warm"
+}</pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Toast -->
+        <div class="toast" id="toast"></div>
+    </div>
+
+    <script>
+        const CONFIG = {
+            themes: {{ themes | tojson }},
+            codeThemes: {{ code_themes | tojson }},
+            fontSizes: {{ font_sizes | tojson }},
+            backgrounds: {{ backgrounds | tojson }}
+        };
+    </script>
+    <script src="/static/js/app.js"></script>
+</body>
+</html>
