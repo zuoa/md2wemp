@@ -67,6 +67,7 @@ class MD2HTML {
         this.currentThemeBadge = document.getElementById('currentThemeBadge');
         this.toast = document.getElementById('toast');
         this.copyApiEndpoint = document.getElementById('copyApiEndpoint');
+        this.apiExample = document.getElementById('apiExample');
     }
 
     bindEvents() {
@@ -337,6 +338,7 @@ class MD2HTML {
         this.updateThemeUI();
         this.saveSettings();
         this.updatePreview();
+        this.updateApiExample();
 
         const themeName = CONFIG.themes[theme]?.name || theme;
         this.currentThemeBadge.textContent = themeName;
@@ -373,6 +375,7 @@ class MD2HTML {
         this.updateThemeUI();
         this.saveSettings();
         this.updatePreview();
+        this.updateApiExample();
         this.showToast(`代码高亮已切换到「${CONFIG.codeThemes[codeTheme].name}」`, 'success');
     }
 
@@ -390,6 +393,7 @@ class MD2HTML {
         this.updateThemeUI();
         this.saveSettings();
         this.updatePreview();
+        this.updateApiExample();
         this.showToast(`字体大小已切换到「${CONFIG.fontSizes[fontSize].name}」`, 'success');
     }
 
@@ -399,7 +403,20 @@ class MD2HTML {
         this.updateThemeUI();
         this.saveSettings();
         this.updatePreview();
+        this.updateApiExample();
         this.showToast(`背景已切换到「${CONFIG.backgrounds[background].name}」`, 'success');
+    }
+
+    // Update API example with current settings
+    updateApiExample() {
+        const example = {
+            markdown: "# Hello World",
+            theme: this.currentSettings.theme,
+            code_theme: this.currentSettings.codeTheme,
+            font_size: this.currentSettings.fontSize,
+            background: this.currentSettings.background
+        };
+        this.apiExample.textContent = JSON.stringify(example, null, 2);
     }
 
     // Toggle preview mode
@@ -572,6 +589,9 @@ def hello_world():
 
         // Restore code theme
         this.updateCodeThemeLink(this.currentSettings.codeTheme);
+
+        // Update API example with current settings
+        this.updateApiExample();
     }
 
     // Show toast notification

@@ -1,4 +1,4 @@
-/* MD2HTML - Refined Design System */
+/* MD2WEMP - Refined Design System */
 
 /* CSS Variables */
 :root {
@@ -117,9 +117,8 @@ html, body {
 }
 
 .logo-icon {
-    width: 28px;
-    height: 28px;
-    color: var(--brand-primary);
+    width: 32px;
+    height: 32px;
 }
 
 .logo-text {

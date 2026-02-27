@@ -1,5 +1,5 @@
 """
-MD2HTML - Markdown转微信公众号HTML工具
+MD2WEMP - Markdown转微信公众号HTML工具
 支持丰富的主题和API调用
 """
 
@@ -206,6 +206,36 @@ THEMES = {
             "h1_style": "double_bottom",  # 双线下边框
             "h2_style": "double_bottom",  # 双线下边框
             "h3_style": "dotted_bottom"   # 点线下边框
+        }
+    },
+    "government": {
+        "name": "政务风",
+        "colors": ["#B71C1C", "#D32F2F", "#FFD700"],
+        "description": "庄重典雅，权威正式",
+        "styles": {
+            "bg_color": "#FFFEF5",
+            "blockquote_bg": "#FFF8E1",
+            "code_bg": "#FFFDE7",
+            "border_radius": "2px",
+            "shadow": "0 2px 8px rgba(183,28,28,0.1)",
+            "h1_style": "government",     # 政务风格标题
+            "h2_style": "government_h2",  # 政务风格副标题
+            "h3_style": "bottom_border"
+        }
+    },
+    "finance": {
+        "name": "金融风",
+        "colors": ["#0D47A1", "#1565C0", "#C9A227"],
+        "description": "专业可信，稳健高端",
+        "styles": {
+            "bg_color": "#FAFBFC",
+            "blockquote_bg": "#E3F2FD",
+            "code_bg": "#ECEFF1",
+            "border_radius": "4px",
+            "shadow": "0 2px 10px rgba(13,71,161,0.08)",
+            "h1_style": "finance",        # 金融风格标题
+            "h2_style": "finance_h2",     # 金融风格副标题
+            "h3_style": "left_border"
         }
     }
 }
@@ -528,6 +558,10 @@ def generate_styled_html(content, theme_config, code_theme, font_config, bg_conf
             "thin_bottom": f"{base} padding-bottom: 10px; color: {color1}; font-weight: 400; border-bottom: 1px solid rgba({_hex_to_rgb(color1)}, 0.2);",
             # Tech - 专业科技
             "left_bottom": f"{base} padding: 12px 16px; border-left: 4px solid {color1}; border-bottom: 1px solid {color1}; color: {color1}; background: linear-gradient(90deg, rgba({_hex_to_rgb(color1)}, 0.05) 0%, transparent 100%);",
+            # Government - 政务风格
+            "government": f"{base} padding: 14px 20px; color: {color1}; text-align: center; border-bottom: 3px solid {color3}; background: linear-gradient(to bottom, rgba({_hex_to_rgb(color3)}, 0.08) 0%, transparent 100%); font-weight: 700; letter-spacing: 2px;",
+            # Finance - 金融风格
+            "finance": f"{base} padding: 14px 0; color: {color1}; border-bottom: 3px double {color3}; position: relative;",
         }
         return styles.get(style_type, styles["bottom_border"])
 
@@ -554,6 +588,10 @@ def generate_styled_html(content, theme_config, code_theme, font_config, bg_conf
             "left_bottom": f"{base} padding: 8px 12px; border-left: 3px solid {color2}; border-bottom: 1px solid {color2}; color: {color1};",
             # Retro - 双线下边框
             "double_bottom": f"{base} padding-bottom: 8px; border-bottom: 3px double {color2}; color: {color1};",
+            # Government - 政务副标题
+            "government_h2": f"{base} padding-left: 16px; border-left: 4px solid {color1}; color: {color1}; background: linear-gradient(90deg, rgba({_hex_to_rgb(color3)}, 0.1) 0%, transparent 50%);",
+            # Finance - 金融副标题
+            "finance_h2": f"{base} padding: 8px 16px; background: linear-gradient(90deg, {color1} 0%, {color2} 100%); color: #fff; border-radius: {radius}; display: inline-block; box-shadow: 0 2px 8px rgba({_hex_to_rgb(color1)}, 0.2);",
         }
         return styles.get(style_type, styles["left_border"])
 
@@ -585,9 +623,14 @@ def generate_styled_html(content, theme_config, code_theme, font_config, bg_conf
     h2_style = get_h2_style(h2_style_type, primary_color, secondary_color, accent_color, border_radius, bg_color)
     h3_style = get_h3_style(h3_style_type, primary_color, secondary_color, accent_color, border_radius, bg_color)
 
+    # 获取导出背景颜色（如果用户选择了非透明背景，则使用用户选择的背景）
+    export_bg_color = bg_config.get("color", "transparent")
+    # 如果背景是透明的，使用主题的背景色
+    final_bg_color = export_bg_color if export_bg_color != "transparent" else bg_color
+
     # 微信支持的样式模板
     wrapper_style = f"""
-        background-color: {bg_color};
+        background-color: {final_bg_color};
         padding: 20px;
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
         font-size: {base_font};
@@ -727,6 +770,14 @@ def generate_styled_html(content, theme_config, code_theme, font_config, bg_conf
         # 科技风格 - 使用蓝色
         th_bg = secondary_color
         th_text_color = "#ffffff"
+    elif h1_style_type in ["government"]:
+        # 政务风格 - 红色+金色点缀
+        th_bg = primary_color
+        th_text_color = "#ffffff"
+    elif h1_style_type in ["finance"]:
+        # 金融风格 - 深蓝+金色
+        th_bg = f"linear-gradient(135deg, {primary_color}, {secondary_color})"
+        th_text_color = "#ffffff"
     else:
         # 默认 - 使用 secondary_color（蓝色等鲜艳色）
         th_bg = secondary_color
@@ -807,14 +858,31 @@ def generate_styled_html(content, theme_config, code_theme, font_config, bg_conf
         styled_rows = []
         for idx, row in enumerate(rows):
             # 检查是否为表头行（包含 th）
-            if '<th>' in row:
-                # 表头行
-                styled_row = re.sub(r'<th>', f'<th style="{th_style}">', row)
+            if '<th' in row:
+                # 表头行 - 处理带或不带 style 属性的 th
+                def replace_th(m):
+                    existing_style = m.group(1) or ''
+                    # 合并样式，保留原有的 text-align
+                    merged_style = th_style.rstrip()
+                    if 'text-align' in existing_style:
+                        align_match = re.search(r'text-align:\s*[^;]+', existing_style)
+                        if align_match:
+                            merged_style = align_match.group(0) + '; ' + merged_style
+                    return f'<th style="{merged_style}">'
+                styled_row = re.sub(r'<th(?:\s+style=\"([^\"]*)\")?>', replace_th, row)
                 styled_rows.append(f'<tr>{styled_row}</tr>')
             else:
-                # 数据行 - 交替背景
+                # 数据行 - 交替背景，处理带或不带 style 属性的 td
                 current_td_style = td_style if idx % 2 == 1 else td_style_even
-                styled_row = re.sub(r'<td>', f'<td style="{current_td_style}">', row)
+                def replace_td(m):
+                    existing_style = m.group(1) or ''
+                    merged_style = current_td_style.rstrip()
+                    if 'text-align' in existing_style:
+                        align_match = re.search(r'text-align:\s*[^;]+', existing_style)
+                        if align_match:
+                            merged_style = align_match.group(0) + '; ' + merged_style
+                    return f'<td style="{merged_style}">'
+                styled_row = re.sub(r'<td(?:\s+style=\"([^\"]*)\")?>', replace_td, row)
                 styled_rows.append(f'<tr>{styled_row}</tr>')
         return f'<table style="{table_style}">{"".join(styled_rows)}</table>'
 
@@ -950,7 +1018,7 @@ def api_health():
     """健康检查接口"""
     return jsonify({
         'status': 'ok',
-        'service': 'md2html',
+        'service': 'md2wemp',
         'version': '1.0.0'
     })
 

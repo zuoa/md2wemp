@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MD2HTML - Markdown 转微信公众号工具</title>
+    <title>MD2WEMP - Markdown 转微信公众号工具</title>
     <link rel="stylesheet" href="/static/css/style.css">
     <link rel="stylesheet" id="codeThemeLink" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
 </head>
@@ -12,14 +12,24 @@
         <!-- Header -->
         <header class="header">
             <div class="logo">
-                <svg class="logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/>
-                    <polyline points="14 2 14 8 20 8"/>
-                    <line x1="16" y1="13" x2="8" y2="13"/>
-                    <line x1="16" y1="17" x2="8" y2="17"/>
-                    <line x1="10" y1="9" x2="8" y2="9"/>
+                <svg class="logo-icon" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <!-- 背景圆角矩形 -->
+                    <rect x="2" y="2" width="36" height="36" rx="8" fill="url(#logoGradient)"/>
+                    <!-- 渐变定义 -->
+                    <defs>
+                        <linearGradient id="logoGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" style="stop-color:#6366f1"/>
+                            <stop offset="100%" style="stop-color:#8b5cf6"/>
+                        </linearGradient>
+                    </defs>
+                    <!-- M 字母 -->
+                    <path d="M10 28V12L15 22L20 12V28" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+                    <!-- D 字母 -->
+                    <path d="M22 12H26C28.2091 12 30 13.7909 30 16V24C30 26.2091 28.2091 28 26 28H22V12Z" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+                    <!-- 箭头符号 -->
+                    <path d="M32 20H36M34 18L36 20L34 22" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
                 </svg>
-                <span class="logo-text">MD<span>2</span>HTML</span>
+                <span class="logo-text">MD<span>2</span>WEMP</span>
             </div>
             <div class="header-actions">
                 <button class="btn btn-outline" id="settingsBtn" title="设置 (Ctrl+,)">
@@ -202,7 +212,7 @@
                             <code>POST /api/convert</code>
                             <button class="btn-copy-api" id="copyApiEndpoint">复制</button>
                         </div>
-                        <pre class="api-example">{
+                        <pre class="api-example" id="apiExample">{
   "markdown": "# Hello World",
   "theme": "default",
   "code_theme": "github",
