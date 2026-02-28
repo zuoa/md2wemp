@@ -1,8 +1,8 @@
 /**
- * MD2HTML - Markdown 转微信公众号 HTML 工具
+ * MD2WE - Markdown 转微信公众号 HTML 工具
  */
 
-class MD2HTML {
+class MD2WE {
     constructor() {
         this.currentSettings = {
             theme: 'default',
@@ -1324,6 +1324,7 @@ ${this.escapeHTML(source)}</div>
         this.generatedSummary = '';
         this.generatedImageDataUrl = '';
         this.generatedImagePrompt = '';
+        localStorage.removeItem('md2we_content');
         localStorage.removeItem('md2html_content');
         this.resetAssistantOutputs();
         this.resetShareState();
@@ -2192,17 +2193,22 @@ ${html}
 
     saveContent() {
         try {
-            localStorage.setItem('md2html_content', this.editor.value);
+            localStorage.setItem('md2we_content', this.editor.value);
         } catch (error) {
             console.warn('保存内容失败:', error);
         }
     }
 
     loadSavedContent() {
-        const saved = localStorage.getItem('md2html_content');
+        const saved = localStorage.getItem('md2we_content') || localStorage.getItem('md2html_content');
 
         if (saved) {
             this.editor.value = saved;
+            try {
+                localStorage.setItem('md2we_content', saved);
+            } catch (error) {
+                console.warn('迁移内容失败:', error);
+            }
             return;
         }
 
@@ -2229,15 +2235,16 @@ flowchart LR
     }
 
     saveSettings() {
-        localStorage.setItem('md2html_settings', JSON.stringify(this.currentSettings));
+        localStorage.setItem('md2we_settings', JSON.stringify(this.currentSettings));
     }
 
     loadSavedSettings() {
-        const saved = localStorage.getItem('md2html_settings');
+        const saved = localStorage.getItem('md2we_settings') || localStorage.getItem('md2html_settings');
         if (saved) {
             try {
                 const settings = JSON.parse(saved);
                 this.currentSettings = { ...this.currentSettings, ...settings };
+                localStorage.setItem('md2we_settings', JSON.stringify(this.currentSettings));
             } catch (error) {
                 console.error('加载设置失败:', error);
             }
@@ -2576,5 +2583,5 @@ flowchart LR
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-    window.md2html = new MD2HTML();
+    window.md2we = new MD2WE();
 });

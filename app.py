@@ -23,6 +23,7 @@ import urllib.parse
 import urllib.request
 import ssl
 import os
+import tempfile
 import uuid
 from pathlib import Path
 from datetime import datetime, timezone
@@ -73,6 +74,7 @@ app = Flask(__name__)
 CORS(app)
 SHARE_STORAGE_DIR = Path(app.root_path) / "data" / "shares"
 AI_CRYPTO_KEY_PATH = Path(app.instance_path) / "ai_config_private_key.pem"
+AI_CRYPTO_FALLBACK_KEY_PATH = Path(tempfile.gettempdir()) / "md2we" / "ai_config_private_key.pem"
 WECHAT_API_BASE = "https://api.weixin.qq.com/cgi-bin"
 WECHAT_INLINE_IMAGE_MAX_BYTES = 1024 * 1024
 WECHAT_THUMB_IMAGE_MAX_BYTES = 64 * 1024
@@ -93,27 +95,57 @@ def normalize_pem_text(raw_value):
     return (raw_value or "").strip().replace("\\n", "\n")
 
 
+def iter_ai_crypto_key_paths():
+    """返回 AI 私钥候选路径，优先使用显式配置。"""
+    explicit_path = (os.getenv("AI_CONFIG_PRIVATE_KEY_PATH") or "").strip()
+    seen_paths = set()
+
+    candidates = []
+    if explicit_path:
+        candidates.append(Path(explicit_path).expanduser())
+    candidates.extend([AI_CRYPTO_KEY_PATH, AI_CRYPTO_FALLBACK_KEY_PATH])
+
+    for candidate in candidates:
+        resolved_candidate = candidate.resolve(strict=False)
+        if resolved_candidate in seen_paths:
+            continue
+        seen_paths.add(resolved_candidate)
+        yield candidate
+
+
 def load_or_create_ai_crypto_private_key():
     """加载或自动生成用于 AI 参数传输加密的私钥。"""
     private_key_pem = normalize_pem_text(os.getenv("AI_CONFIG_PRIVATE_KEY_PEM", ""))
     if private_key_pem:
         return serialization.load_pem_private_key(private_key_pem.encode("utf-8"), password=None)
 
-    if AI_CRYPTO_KEY_PATH.exists():
-        return serialization.load_pem_private_key(AI_CRYPTO_KEY_PATH.read_bytes(), password=None)
+    for key_path in iter_ai_crypto_key_paths():
+        try:
+            if key_path.exists():
+                return serialization.load_pem_private_key(key_path.read_bytes(), password=None)
+        except OSError as exc:
+            app.logger.warning("Unable to read AI private key from %s: %s", key_path, exc)
 
-    AI_CRYPTO_KEY_PATH.parent.mkdir(parents=True, exist_ok=True)
     private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     pem_bytes = private_key.private_bytes(
         encoding=serialization.Encoding.PEM,
         format=serialization.PrivateFormat.PKCS8,
         encryption_algorithm=serialization.NoEncryption()
     )
-    AI_CRYPTO_KEY_PATH.write_bytes(pem_bytes)
-    try:
-        os.chmod(AI_CRYPTO_KEY_PATH, 0o600)
-    except OSError:
-        pass
+
+    for key_path in iter_ai_crypto_key_paths():
+        try:
+            key_path.parent.mkdir(parents=True, exist_ok=True)
+            key_path.write_bytes(pem_bytes)
+            try:
+                os.chmod(key_path, 0o600)
+            except OSError:
+                pass
+            return private_key
+        except OSError as exc:
+            app.logger.warning("Unable to persist AI private key to %s: %s", key_path, exc)
+
+    app.logger.warning("Falling back to an in-memory AI private key because no writable storage path is available")
     return private_key
 
 
@@ -2738,7 +2770,7 @@ def api_health():
     """健康检查接口"""
     return jsonify({
         'status': 'ok',
-        'service': 'md2wemp',
+        'service': 'md2we',
         'version': '1.0.0'
     })
 

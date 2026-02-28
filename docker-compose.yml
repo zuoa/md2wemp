@@ -1,8 +1,8 @@
 services:
-  md2html:
-    image: ghcr.io/zuoa/md2wemp:latest
+  md2we:
+    image: ghcr.io/zuoa/md2we:latest
     pull_policy: always
-    container_name: md2html
+    container_name: md2we
     restart: unless-stopped
     ports:
       - "5566:5566"
@@ -16,10 +16,13 @@ services:
         max-file: "3"
     volumes:
       - ./data:/app/data
-      - ./instance:/app/instance
+      - md2we-instance:/app/instance
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5566/api/health', timeout=3)"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 20s
+
+volumes:
+  md2we-instance:

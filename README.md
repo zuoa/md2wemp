@@ -55,11 +55,13 @@ curl http://localhost:5566/api/health
 
 ### 方式一：使用 Docker Compose
 
-首次启动前建议先准备持久化目录：
+首次启动前建议先准备分享页持久化目录：
 
 ```bash
-mkdir -p data/shares instance
+mkdir -p data/shares
 ```
+
+`/app/instance` 默认使用 Docker named volume 持久化，避免宿主机 bind mount 导致的权限问题。
 
 先拉取线上镜像，再启动：
 
@@ -122,13 +124,13 @@ ghcr.io/<owner>/<repo>
 当前 MD2WE 的发布镜像仓库是：
 
 ```text
-ghcr.io/zuoa/md2wemp
+ghcr.io/zuoa/md2we
 ```
 
 拉取示例：
 
 ```bash
-docker pull ghcr.io/zuoa/md2wemp:latest
+docker pull ghcr.io/zuoa/md2we:latest
 ```
 
 注意：
@@ -141,20 +143,20 @@ docker pull ghcr.io/zuoa/md2wemp:latest
 直接拉取线上镜像：
 
 ```bash
-docker pull ghcr.io/zuoa/md2wemp:latest
+docker pull ghcr.io/zuoa/md2we:latest
 ```
 
 启动容器：
 
 ```bash
 docker run -d \
-  --name md2html \
+  --name md2we \
   -p 5566:5566 \
   -v "$(pwd)/data:/app/data" \
-  -v "$(pwd)/instance:/app/instance" \
+  -v md2we-instance:/app/instance \
   -e SITE_URL=https://md2we.com \
   -e DEFAULT_OG_IMAGE_URL=https://md2we.com/static/og-cover.png \
-  ghcr.io/zuoa/md2wemp:latest
+  ghcr.io/zuoa/md2we:latest
 ```
 
 ### 可选：本地构建镜像
@@ -162,7 +164,7 @@ docker run -d \
 如果你要基于当前工作区代码自行构建，而不是使用 GHCR 上的正式镜像：
 
 ```bash
-docker build -t md2html:local .
+docker build -t md2we:local .
 ```
 
 ## 环境变量
@@ -228,6 +230,7 @@ python3 scripts/generate_ai_crypto_key.py
 
 - 后端启动时优先读取 `AI_CONFIG_PRIVATE_KEY_PEM`
 - 如果未配置环境变量，会自动读取或创建 `instance/ai_config_private_key.pem`
+- Docker Compose 默认会把该私钥保存在 named volume 中；如果改成宿主机 bind mount，请确保容器运行用户对挂载目录有写权限
 - 前端会拿到对应公钥，并用它加密 AI 配置
 - 后端再使用私钥解密后发起真实 AI 请求
 - 该加密只保护浏览器到服务端这一跳，不会加密浏览器本地 `localStorage`
