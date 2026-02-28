@@ -72,7 +72,7 @@ except ImportError:
 
 app = Flask(__name__)
 CORS(app)
-SHARE_STORAGE_DIR = Path(app.root_path) / "data" / "shares"
+DEFAULT_SHARE_STORAGE_DIR = Path(app.root_path) / "data" / "shares"
 AI_CRYPTO_KEY_PATH = Path(app.instance_path) / "ai_config_private_key.pem"
 AI_CRYPTO_FALLBACK_KEY_PATH = Path(tempfile.gettempdir()) / "md2we" / "ai_config_private_key.pem"
 WECHAT_API_BASE = "https://api.weixin.qq.com/cgi-bin"
@@ -84,6 +84,7 @@ SITE_DESCRIPTION = os.getenv(
     "SITE_DESCRIPTION",
     "MD2WE 是一个面向微信公众号排版的 Markdown 编辑器，支持主题排版、Mermaid、AI 辅助创作、分享页和公众号草稿推送。"
 ).strip()
+_ACTIVE_SHARE_STORAGE_DIR = None
 
 
 class AIConfigCryptoError(ValueError):
@@ -111,6 +112,58 @@ def iter_ai_crypto_key_paths():
             continue
         seen_paths.add(resolved_candidate)
         yield candidate
+
+
+def iter_share_storage_dirs():
+    """返回分享数据目录候选列表。"""
+    explicit_path = (os.getenv("SHARE_STORAGE_DIR") or "").strip()
+    seen_paths = set()
+
+    candidates = []
+    if explicit_path:
+        candidates.append(Path(explicit_path).expanduser())
+    candidates.append(DEFAULT_SHARE_STORAGE_DIR)
+
+    for candidate in candidates:
+        resolved_candidate = candidate.resolve(strict=False)
+        if resolved_candidate in seen_paths:
+            continue
+        seen_paths.add(resolved_candidate)
+        yield candidate
+
+
+def is_share_storage_dir_writable(directory):
+    """检测分享目录是否可写。"""
+    probe_path = directory / f".write-test-{uuid.uuid4().hex}"
+    try:
+        directory.mkdir(parents=True, exist_ok=True)
+        probe_path.write_text("", encoding="utf-8")
+        probe_path.unlink()
+        return True
+    except OSError as exc:
+        app.logger.warning("Unable to write share storage dir %s: %s", directory, exc)
+        try:
+            if probe_path.exists():
+                probe_path.unlink()
+        except OSError:
+            pass
+        return False
+
+
+def get_active_share_storage_dir():
+    """返回当前用于写入的分享目录。"""
+    global _ACTIVE_SHARE_STORAGE_DIR
+
+    if _ACTIVE_SHARE_STORAGE_DIR is not None:
+        return _ACTIVE_SHARE_STORAGE_DIR
+
+    for candidate in iter_share_storage_dirs():
+        if not is_share_storage_dir_writable(candidate):
+            continue
+        _ACTIVE_SHARE_STORAGE_DIR = candidate
+        return _ACTIVE_SHARE_STORAGE_DIR
+
+    raise OSError("没有可写的分享目录，请检查 SHARE_STORAGE_DIR 或挂载目录权限")
 
 
 def load_or_create_ai_crypto_private_key():
@@ -614,24 +667,28 @@ def build_share_structured_data(title, description, canonical_url, published_at)
 
 def iter_share_sitemap_entries():
     """遍历 sitemap 需要输出的分享页。"""
-    if not SHARE_STORAGE_DIR.exists():
-        return []
-
     entries = []
-    for share_path in sorted(SHARE_STORAGE_DIR.glob("*.json")):
-        try:
-            payload = json.loads(share_path.read_text("utf-8"))
-        except (OSError, ValueError):
+    seen_share_ids = set()
+
+    for share_dir in iter_share_storage_dirs():
+        if not share_dir.exists():
             continue
 
-        share_id = (payload.get("id") or share_path.stem or "").strip()
-        if not share_id:
-            continue
+        for share_path in sorted(share_dir.glob("*.json")):
+            try:
+                payload = json.loads(share_path.read_text("utf-8"))
+            except (OSError, ValueError):
+                continue
 
-        entries.append({
-            "loc": build_public_url("share_article", share_id=share_id),
-            "lastmod": normalize_iso_timestamp(payload.get("created_at"))
-        })
+            share_id = (payload.get("id") or share_path.stem or "").strip()
+            if not share_id or share_id in seen_share_ids:
+                continue
+
+            seen_share_ids.add(share_id)
+            entries.append({
+                "loc": build_public_url("share_article", share_id=share_id),
+                "lastmod": normalize_iso_timestamp(payload.get("created_at"))
+            })
 
     return entries
 
@@ -691,7 +748,7 @@ def build_theme_cards():
 
 def ensure_share_storage_dir():
     """确保分享内容目录存在。"""
-    SHARE_STORAGE_DIR.mkdir(parents=True, exist_ok=True)
+    get_active_share_storage_dir().mkdir(parents=True, exist_ok=True)
 
 
 def get_share_file_path(share_id):
@@ -699,17 +756,23 @@ def get_share_file_path(share_id):
     safe_id = re.sub(r"[^a-f0-9]", "", (share_id or "").lower())[:32]
     if not safe_id:
         return None
-    return SHARE_STORAGE_DIR / f"{safe_id}.json"
+    return get_active_share_storage_dir() / f"{safe_id}.json"
 
 
 def load_share_payload(share_id):
     """读取分享数据。"""
-    share_path = get_share_file_path(share_id)
-    if not share_path or not share_path.exists():
+    safe_id = re.sub(r"[^a-f0-9]", "", (share_id or "").lower())[:32]
+    if not safe_id:
         return None
 
-    with share_path.open("r", encoding="utf-8") as fp:
-        return json.load(fp)
+    for share_dir in iter_share_storage_dirs():
+        share_path = share_dir / f"{safe_id}.json"
+        if not share_path.exists():
+            continue
+        with share_path.open("r", encoding="utf-8") as fp:
+            return json.load(fp)
+
+    return None
 
 
 def format_share_timestamp(iso_text):

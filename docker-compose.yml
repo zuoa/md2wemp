@@ -15,7 +15,7 @@ services:
         max-size: "10m"
         max-file: "3"
     volumes:
-      - ./data:/app/data
+      - md2we-data:/app/data
       - md2we-instance:/app/instance
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5566/api/health', timeout=3)"]
@@ -25,4 +25,5 @@ services:
       start_period: 20s
 
 volumes:
+  md2we-data:
   md2we-instance:

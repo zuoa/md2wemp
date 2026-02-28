@@ -55,13 +55,7 @@ curl http://localhost:5566/api/health
 
 ### 方式一：使用 Docker Compose
 
-首次启动前建议先准备分享页持久化目录：
-
-```bash
-mkdir -p data/shares
-```
-
-`/app/instance` 默认使用 Docker named volume 持久化，避免宿主机 bind mount 导致的权限问题。
+`/app/data` 和 `/app/instance` 默认都使用 Docker named volume 持久化，避免宿主机 bind mount 导致的权限问题。
 
 先拉取线上镜像，再启动：
 
@@ -152,12 +146,29 @@ docker pull ghcr.io/zuoa/md2we:latest
 docker run -d \
   --name md2we \
   -p 5566:5566 \
+  -v md2we-data:/app/data \
+  -v md2we-instance:/app/instance \
+  -e SITE_URL=https://md2we.com \
+  -e DEFAULT_OG_IMAGE_URL=https://md2we.com/static/og-cover.png \
+  ghcr.io/zuoa/md2we:latest
+```
+
+如果你确实想把分享页数据直接映射到宿主机目录，也可以改成：
+
+```bash
+mkdir -p data/shares
+chmod 0777 data data/shares
+docker run -d \
+  --name md2we \
+  -p 5566:5566 \
   -v "$(pwd)/data:/app/data" \
   -v md2we-instance:/app/instance \
   -e SITE_URL=https://md2we.com \
   -e DEFAULT_OG_IMAGE_URL=https://md2we.com/static/og-cover.png \
   ghcr.io/zuoa/md2we:latest
 ```
+
+否则容器内非 root 用户可能无法写入 `/app/data/shares`。
 
 ### 可选：本地构建镜像
 
@@ -198,12 +209,14 @@ SITE_URL=https://md2we.com
 DEFAULT_OG_IMAGE_URL=https://md2we.com/static/og-cover.png
 SITE_NAME=MD2WE
 SITE_DESCRIPTION=MD2WE 是一个面向微信公众号排版的 Markdown 编辑器
+SHARE_STORAGE_DIR=/app/data/shares
 ```
 
 说明：
 
 - `SITE_URL` 用于生成稳定的 `canonical`、`robots.txt` 和 `sitemap.xml`
 - `DEFAULT_OG_IMAGE_URL` 用于首页和分享页的社交分享卡片图片
+- `SHARE_STORAGE_DIR` 可显式指定分享页 JSON 的存储目录
 - 如果不配置 `SITE_URL`，服务端会退回当前请求域名
 
 ### AI 配置加密私钥
