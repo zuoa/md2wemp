@@ -119,7 +119,7 @@ http://localhost:5566
 ghcr.io/<owner>/<repo>
 ```
 
-当前发布包名是：
+当前 MD2WE 的发布镜像仓库是：
 
 ```text
 ghcr.io/zuoa/md2wemp

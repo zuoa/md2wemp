@@ -1,5 +1,5 @@
 """
-MD2WEMP - Markdown转微信公众号HTML工具
+MD2WE - Markdown转微信公众号HTML工具
 支持丰富的主题和API调用
 """
 
