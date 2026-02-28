@@ -1,0 +1,110 @@
+:root {
+    --ink-strong: #08111f;
+    --ink-soft: #4c5a6a;
+    --line: rgba(8, 17, 31, 0.1);
+    --surface: rgba(255, 255, 255, 0.9);
+    --shadow: 0 24px 60px rgba(8, 17, 31, 0.12);
+}
+
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+}
+
+html,
+body {
+    margin: 0;
+    min-height: 100%;
+}
+
+body {
+    font-family: "Noto Sans SC", sans-serif;
+    color: var(--ink-strong);
+    background:
+        radial-gradient(circle at top left, rgba(0, 102, 255, 0.14), transparent 28%),
+        radial-gradient(circle at top right, rgba(25, 194, 200, 0.14), transparent 22%),
+        linear-gradient(180deg, #f4f8ff 0%, #f8fafc 45%, #eef2f7 100%);
+}
+
+.share-shell {
+    width: min(1120px, calc(100vw - 32px));
+    margin: 0 auto;
+    padding: 36px 0 56px;
+}
+
+.share-stage {
+    position: relative;
+}
+
+.share-stage::before,
+.share-stage::after {
+    content: "";
+    position: absolute;
+    z-index: 0;
+    border-radius: 999px;
+    filter: blur(18px);
+    opacity: 0.45;
+}
+
+.share-stage::before {
+    top: -18px;
+    left: 40px;
+    width: 132px;
+    height: 132px;
+    background: rgba(37, 99, 235, 0.2);
+}
+
+.share-stage::after {
+    right: 52px;
+    bottom: -10px;
+    width: 148px;
+    height: 148px;
+    background: rgba(20, 184, 166, 0.18);
+}
+
+.share-article {
+    position: relative;
+    z-index: 1;
+    padding: 20px;
+    border: 1px solid rgba(255, 255, 255, 0.74);
+    border-radius: 32px;
+    background: var(--surface);
+    box-shadow: var(--shadow);
+    backdrop-filter: blur(20px);
+}
+
+.share-article section {
+    margin: 0 auto;
+}
+
+.share-article img {
+    max-width: 100%;
+}
+
+.share-article .md2-mermaid svg {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    margin: 0 auto;
+}
+
+.mermaid-error {
+    padding: 14px 16px;
+    border-radius: 14px;
+    background: rgba(239, 68, 68, 0.08);
+    color: #991b1b;
+    font-size: 13px;
+}
+
+@media (max-width: 768px) {
+    .share-shell {
+        width: min(100vw - 20px, 1120px);
+        padding: 16px 0 28px;
+    }
+
+    .share-article {
+        padding: 10px;
+        border-radius: 22px;
+    }
+}

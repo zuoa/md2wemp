@@ -171,6 +171,16 @@
                         </div>
                     </div>
                     <div class="panel-actions">
+                        <button class="btn btn-outline btn-panel-action" id="shareBtn" title="生成分享链接和二维码">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="18" cy="5" r="3"></circle>
+                                <circle cx="6" cy="12" r="3"></circle>
+                                <circle cx="18" cy="19" r="3"></circle>
+                                <path d="M8.59 13.51l6.83 3.98"></path>
+                                <path d="M15.41 6.51L8.59 10.49"></path>
+                            </svg>
+                            分享
+                        </button>
                         <button class="btn btn-outline btn-panel-action" id="downloadBtn" title="下载 HTML">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
@@ -415,6 +425,57 @@
             </div>
         </div>
 
+        <div class="share-overlay" id="shareOverlay"></div>
+        <div class="share-modal" id="shareModal" role="dialog" aria-modal="true" aria-labelledby="shareModalTitle">
+            <div class="share-modal-header">
+                <div>
+                    <p class="share-modal-kicker">Share Page</p>
+                    <h2 id="shareModalTitle">分享文章</h2>
+                    <p class="share-modal-caption">生成独立访问链接和二维码，扫码或打开链接即可查看当前内容。</p>
+                </div>
+                <div class="share-modal-actions">
+                    <button class="btn btn-outline btn-panel-action" id="refreshShareBtn" type="button">重新生成</button>
+                    <button class="btn-close" id="closeShare" aria-label="关闭分享弹层">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="18" y1="6" x2="6" y2="18"></line>
+                            <line x1="6" y1="6" x2="18" y2="18"></line>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+            <div class="share-modal-body">
+                <div class="share-status-card">
+                    <span class="share-status-label">状态</span>
+                    <p id="shareStatus" class="share-status-text">点击“分享”后将生成可访问页面和二维码。</p>
+                </div>
+                <div class="share-grid">
+                    <section class="share-card share-card-qr">
+                        <div class="share-card-head">
+                            <span>二维码</span>
+                            <span class="share-card-caption">适合微信扫码预览</span>
+                        </div>
+                        <div class="share-qr-frame">
+                            <div id="shareQrPlaceholder" class="share-qr-placeholder">二维码生成中...</div>
+                            <div id="shareQr" class="share-qr" aria-live="polite"></div>
+                        </div>
+                    </section>
+                    <section class="share-card">
+                        <div class="share-card-head">
+                            <span>分享链接</span>
+                            <span class="share-card-caption">链接打开即查看完整内容</span>
+                        </div>
+                        <label class="field-label" for="shareUrlInput">URL</label>
+                        <input id="shareUrlInput" class="text-field share-url-input" type="text" readonly placeholder="生成后显示分享链接">
+                        <div class="share-link-actions">
+                            <button class="btn btn-primary" id="copyShareLinkBtn" type="button" disabled>复制链接</button>
+                            <button class="btn btn-outline" id="openShareLinkBtn" type="button" disabled>打开页面</button>
+                        </div>
+                        <p class="share-hint">每次重新生成都会创建一个新的分享页，内容以生成时的编辑器内容为准。</p>
+                    </section>
+                </div>
+            </div>
+        </div>
+
         <!-- Toast -->
         <div class="toast" id="toast"></div>
     </div>
@@ -425,6 +486,7 @@
             codeThemes: {{ code_themes | tojson }},
             fontSizes: {{ font_sizes | tojson }},
             backgrounds: {{ backgrounds | tojson }},
+            qrEnabled: {{ qr_enabled | tojson }},
             aiEnabled: {{ ai_enabled | tojson }},
             aiDefaults: {{ ai_defaults | tojson }}
         };

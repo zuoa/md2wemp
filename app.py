@@ -3,7 +3,7 @@ MD2WEMP - Markdown转微信公众号HTML工具
 支持丰富的主题和API调用
 """
 
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, abort, url_for
 from flask_cors import CORS
 import markdown
 from markdown.extensions.tables import TableExtension
@@ -21,10 +21,23 @@ import urllib.parse
 import urllib.request
 import ssl
 import os
+import uuid
+from pathlib import Path
+from datetime import datetime, timezone
 from urllib.error import HTTPError, URLError
+
+try:
+    import qrcode
+    from qrcode.image.svg import SvgPathImage
+    QR_CODE_AVAILABLE = True
+except ImportError:
+    qrcode = None
+    SvgPathImage = None
+    QR_CODE_AVAILABLE = False
 
 app = Flask(__name__)
 CORS(app)
+SHARE_STORAGE_DIR = Path(app.root_path) / "data" / "shares"
 
 # 主题配置 - 丰富的个性化设置
 THEMES = {
@@ -331,6 +344,116 @@ def has_ai_capability(ai_config=None, capability="any"):
     if capability == "image":
         return bool(config["image"]["api_key"])
     return bool(config["text"]["api_key"] or config["image"]["api_key"])
+
+
+def normalize_render_options(theme="default", code_theme="github", font_size="medium", background="warm"):
+    """校验并规范化渲染参数。"""
+    return (
+        theme if theme in THEMES else "default",
+        code_theme if code_theme in CODE_THEMES else "github",
+        font_size if font_size in FONT_SIZES else "medium",
+        background if background in BACKGROUNDS else "warm"
+    )
+
+
+def build_theme_cards():
+    """为主题卡片补充前景色。"""
+    themed_cards = {}
+    for key, theme in THEMES.items():
+        theme_copy = dict(theme)
+        bg_color = theme["styles"].get("bg_color", "#ffffff")
+        bg_hex = bg_color.lstrip("#")
+        r, g, b = int(bg_hex[0:2], 16), int(bg_hex[2:4], 16), int(bg_hex[4:6], 16)
+        is_dark = (r * 0.299 + g * 0.587 + b * 0.114) < 128
+        theme_copy["card_text_color"] = theme["styles"].get("text_color", "#ffffff") if is_dark else "#1f2937"
+        themed_cards[key] = theme_copy
+    return themed_cards
+
+
+def ensure_share_storage_dir():
+    """确保分享内容目录存在。"""
+    SHARE_STORAGE_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def get_share_file_path(share_id):
+    """返回分享文件路径。"""
+    safe_id = re.sub(r"[^a-f0-9]", "", (share_id or "").lower())[:32]
+    if not safe_id:
+        return None
+    return SHARE_STORAGE_DIR / f"{safe_id}.json"
+
+
+def load_share_payload(share_id):
+    """读取分享数据。"""
+    share_path = get_share_file_path(share_id)
+    if not share_path or not share_path.exists():
+        return None
+
+    with share_path.open("r", encoding="utf-8") as fp:
+        return json.load(fp)
+
+
+def format_share_timestamp(iso_text):
+    """格式化分享时间。"""
+    if not iso_text:
+        return ""
+
+    try:
+        dt = datetime.fromisoformat(iso_text.replace("Z", "+00:00"))
+    except ValueError:
+        return ""
+
+    if dt.tzinfo:
+        dt = dt.astimezone()
+    return dt.strftime("%Y-%m-%d %H:%M")
+
+
+def create_share_qr_svg(url):
+    """生成分享链接对应的二维码 SVG。"""
+    if not QR_CODE_AVAILABLE or not url:
+        return ""
+
+    qr = qrcode.QRCode(
+        error_correction=qrcode.constants.ERROR_CORRECT_M,
+        box_size=10,
+        border=2
+    )
+    qr.add_data(url)
+    qr.make(fit=True)
+
+    image = qr.make_image(
+        image_factory=SvgPathImage,
+        fill_color="#08111f",
+        back_color="#ffffff"
+    )
+    buffer = io.BytesIO()
+    image.save(buffer)
+    return buffer.getvalue().decode("utf-8")
+
+
+def build_share_payload(md_text, theme, code_theme, font_size, background, share_id, share_url):
+    """构建分享内容。"""
+    title = find_first_heading(md_text) or "未命名文章"
+    plain_text = extract_plain_text_from_markdown(md_text)
+    excerpt = plain_text[:160].strip()
+    html = process_markdown(md_text, theme, code_theme, font_size, background)
+    created_at = datetime.now(timezone.utc).isoformat()
+
+    return {
+        "id": share_id,
+        "title": title,
+        "excerpt": excerpt,
+        "markdown": md_text,
+        "html": html,
+        "share_url": share_url,
+        "created_at": created_at,
+        "settings": {
+            "theme": theme,
+            "code_theme": code_theme,
+            "font_size": font_size,
+            "background": background
+        }
+    }
 
 
 def openai_api_request(path, payload, timeout=60, ai_config=None, capability="text"):
@@ -1186,28 +1309,13 @@ def generate_styled_html(content, theme_config, code_theme, font_config, bg_conf
 @app.route('/')
 def index():
     """首页"""
-    # 为每个主题添加卡片文字颜色
-    themes_with_card_color = {}
-    for key, theme in THEMES.items():
-        theme_copy = dict(theme)
-        bg_color = theme['styles'].get('bg_color', '#ffffff')
-        # 计算背景亮度
-        bg_hex = bg_color.lstrip('#')
-        r, g, b = int(bg_hex[0:2], 16), int(bg_hex[2:4], 16), int(bg_hex[4:6], 16)
-        is_dark = (r * 0.299 + g * 0.587 + b * 0.114) < 128
-        # 根据背景亮度设置卡片文字颜色
-        if is_dark:
-            theme_copy['card_text_color'] = theme['styles'].get('text_color', '#ffffff')
-        else:
-            theme_copy['card_text_color'] = '#1f2937'
-        themes_with_card_color[key] = theme_copy
-
     return render_template('index.html',
-                          themes=themes_with_card_color,
+                          themes=build_theme_cards(),
                           code_themes=CODE_THEMES,
                           font_sizes=FONT_SIZES,
                           backgrounds=BACKGROUNDS,
                           ai_enabled=has_ai_capability(),
+                          qr_enabled=QR_CODE_AVAILABLE,
                           ai_defaults={
                               'text': {
                                   'base_url': os.getenv("OPENAI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta/openai"),
@@ -1218,6 +1326,44 @@ def index():
                                   'model': os.getenv("OPENAI_IMAGE_TOOL_MODEL", "imagen-4.0-generate-001")
                               }
                           })
+
+
+@app.route('/share/<share_id>')
+def share_article(share_id):
+    """分享页。"""
+    payload = load_share_payload(share_id)
+    if not payload:
+        abort(404, description="分享内容不存在或已失效")
+
+    settings = payload.get("settings") or {}
+    theme, code_theme, font_size, background = normalize_render_options(
+        settings.get("theme", "default"),
+        settings.get("code_theme", "github"),
+        settings.get("font_size", "medium"),
+        settings.get("background", "warm")
+    )
+
+    markdown_text = payload.get("markdown", "")
+    article_html = payload.get("html") or process_markdown(
+        markdown_text,
+        theme,
+        code_theme,
+        font_size,
+        background
+    )
+    title = payload.get("title") or find_first_heading(markdown_text) or "未命名文章"
+    excerpt = payload.get("excerpt") or extract_plain_text_from_markdown(markdown_text)[:160]
+
+    return render_template(
+        "share.html",
+        title=title,
+        excerpt=excerpt,
+        article_html=article_html,
+        share_url=payload.get("share_url") or request.url,
+        theme_name=THEMES[theme]["name"],
+        created_at_label=format_share_timestamp(payload.get("created_at")),
+        code_theme_name=CODE_THEMES[code_theme]["name"]
+    )
 
 
 @app.route('/api/convert', methods=['POST'])
@@ -1233,20 +1379,12 @@ def api_convert():
             }), 400
 
         md_text = data['markdown']
-        theme = data.get('theme', 'default')
-        code_theme = data.get('code_theme', 'github')
-        font_size = data.get('font_size', 'medium')
-        background = data.get('background', 'warm')
-
-        # 验证参数
-        if theme not in THEMES:
-            theme = 'default'
-        if code_theme not in CODE_THEMES:
-            code_theme = 'github'
-        if font_size not in FONT_SIZES:
-            font_size = 'medium'
-        if background not in BACKGROUNDS:
-            background = 'warm'
+        theme, code_theme, font_size, background = normalize_render_options(
+            data.get('theme', 'default'),
+            data.get('code_theme', 'github'),
+            data.get('font_size', 'medium'),
+            data.get('background', 'warm')
+        )
 
         html = process_markdown(md_text, theme, code_theme, font_size, background)
 
@@ -1262,6 +1400,57 @@ def api_convert():
         return jsonify({
             'success': False,
             'error': str(e)
+        }), 500
+
+
+@app.route('/api/share', methods=['POST'])
+def api_share():
+    """创建分享页面。"""
+    try:
+        data = request.get_json() or {}
+        md_text = data.get("markdown", "")
+        if not md_text.strip():
+            return jsonify({
+                "success": False,
+                "error": "请先输入文章内容"
+            }), 400
+
+        theme, code_theme, font_size, background = normalize_render_options(
+            data.get("theme", "default"),
+            data.get("code_theme", "github"),
+            data.get("font_size", "medium"),
+            data.get("background", "warm")
+        )
+
+        ensure_share_storage_dir()
+        share_id = uuid.uuid4().hex[:12]
+        share_url = url_for("share_article", share_id=share_id, _external=True)
+        payload = build_share_payload(
+            md_text,
+            theme,
+            code_theme,
+            font_size,
+            background,
+            share_id,
+            share_url
+        )
+
+        share_path = get_share_file_path(share_id)
+        with share_path.open("w", encoding="utf-8") as fp:
+            json.dump(payload, fp, ensure_ascii=False, indent=2)
+
+        return jsonify({
+            "success": True,
+            "share_id": share_id,
+            "share_url": share_url,
+            "title": payload["title"],
+            "created_at_label": format_share_timestamp(payload["created_at"]),
+            "qr_svg": create_share_qr_svg(share_url)
+        })
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
         }), 500
 
 
@@ -1344,6 +1533,7 @@ def api_themes():
         'code_themes': CODE_THEMES,
         'font_sizes': FONT_SIZES,
         'backgrounds': BACKGROUNDS,
+        'qr_enabled': QR_CODE_AVAILABLE,
         'ai_enabled': has_ai_capability(),
         'ai_defaults': {
             'text': {

@@ -25,6 +25,8 @@ class MD2HTML {
         this.generatedImageDataUrl = '';
         this.generatedImagePrompt = '';
         this.generatedSummary = '';
+        this.currentShareLink = '';
+        this.shareRequestInFlight = false;
         this.init();
     }
 
@@ -36,6 +38,7 @@ class MD2HTML {
         this.loadSavedSettings();
         this.updateStats();
         this.updateAssistantAvailability();
+        this.resetShareState();
         this.updatePreview();
         this.initResizer();
         this.togglePreviewMode(this.previewMode);
@@ -55,6 +58,7 @@ class MD2HTML {
         this.copyBtn = document.getElementById('copyBtn');
         this.clearBtn = document.getElementById('clearBtn');
         this.downloadBtn = document.getElementById('downloadBtn');
+        this.shareBtn = document.getElementById('shareBtn');
         this.headerSummary = document.getElementById('headerSummary');
         this.summaryTheme = document.getElementById('summaryTheme');
         this.summaryCodeTheme = document.getElementById('summaryCodeTheme');
@@ -69,6 +73,16 @@ class MD2HTML {
         this.assistantOverlay = document.getElementById('assistantOverlay');
         this.assistantPanel = document.getElementById('assistantPanel');
         this.closeAssistant = document.getElementById('closeAssistant');
+        this.shareOverlay = document.getElementById('shareOverlay');
+        this.shareModal = document.getElementById('shareModal');
+        this.closeShare = document.getElementById('closeShare');
+        this.refreshShareBtn = document.getElementById('refreshShareBtn');
+        this.shareStatus = document.getElementById('shareStatus');
+        this.shareQr = document.getElementById('shareQr');
+        this.shareQrPlaceholder = document.getElementById('shareQrPlaceholder');
+        this.shareUrlInput = document.getElementById('shareUrlInput');
+        this.copyShareLinkBtn = document.getElementById('copyShareLinkBtn');
+        this.openShareLinkBtn = document.getElementById('openShareLinkBtn');
 
         this.previewModeToggle = document.getElementById('previewModeToggle');
 
@@ -119,6 +133,7 @@ class MD2HTML {
     bindEvents() {
         this.editor.addEventListener('input', () => {
             this.saveContent();
+            this.invalidateShareState();
             this.updateStats();
             this.updateEditorSyntax();
             this.debounceUpdate();
@@ -132,6 +147,7 @@ class MD2HTML {
                 this.editor.value = `${this.editor.value.substring(0, start)}    ${this.editor.value.substring(end)}`;
                 this.editor.selectionStart = this.editor.selectionEnd = start + 4;
                 this.saveContent();
+                this.invalidateShareState();
                 this.updateStats();
                 this.updateEditorSyntax();
                 this.debounceUpdate();
@@ -143,11 +159,18 @@ class MD2HTML {
         this.copyBtn.addEventListener('click', () => this.copyHTML());
         this.clearBtn.addEventListener('click', () => this.clearEditor());
         this.downloadBtn.addEventListener('click', () => this.downloadHTML());
+        this.shareBtn.addEventListener('click', () => this.openShareModal());
 
         this.closeSettings.addEventListener('click', () => this.closeSettingsPanel());
         this.settingsOverlay.addEventListener('click', () => this.closeSettingsPanel());
         this.closeAssistant.addEventListener('click', () => this.closeAssistantPanel());
         this.assistantOverlay.addEventListener('click', () => this.closeAssistantPanel());
+        this.closeShare.addEventListener('click', () => this.closeShareModal());
+        this.shareOverlay.addEventListener('click', () => this.closeShareModal());
+        this.refreshShareBtn.addEventListener('click', () => this.generateShareLink());
+        this.copyShareLinkBtn.addEventListener('click', () => this.copyShareLink());
+        this.openShareLinkBtn.addEventListener('click', () => this.openShareLink());
+        this.shareUrlInput.addEventListener('focus', () => this.shareUrlInput.select());
 
         this.themeGrid.addEventListener('click', (e) => {
             const card = e.target.closest('.theme-card');
@@ -238,6 +261,7 @@ class MD2HTML {
 
             if (e.key === 'Escape') {
                 this.closeAllDrawers();
+                this.closeShareModal();
             }
         });
 
@@ -518,6 +542,7 @@ ${this.escapeHTML(source)}</div>
         this.currentSettings.theme = theme;
         this.updateThemeUI();
         this.saveSettings();
+        this.invalidateShareState();
         this.updatePreview();
         this.updateApiExample();
         this.updateHeaderSummary();
@@ -550,6 +575,7 @@ ${this.escapeHTML(source)}</div>
         this.updateCodeThemeLink(codeTheme);
         this.updateThemeUI();
         this.saveSettings();
+        this.invalidateShareState();
         this.updatePreview();
         this.updateApiExample();
         this.showToast(`代码高亮已切换到「${CONFIG.codeThemes[codeTheme].name}」`, 'success');
@@ -566,6 +592,7 @@ ${this.escapeHTML(source)}</div>
         this.currentSettings.fontSize = fontSize;
         this.updateThemeUI();
         this.saveSettings();
+        this.invalidateShareState();
         this.updatePreview();
         this.updateApiExample();
         this.showToast(`字体大小已切换到「${CONFIG.fontSizes[fontSize].name}」`, 'success');
@@ -575,6 +602,7 @@ ${this.escapeHTML(source)}</div>
         this.currentSettings.background = background;
         this.updateThemeUI();
         this.saveSettings();
+        this.invalidateShareState();
         this.updatePreview();
         this.updateApiExample();
         this.showToast(`背景已切换到「${CONFIG.backgrounds[background].name}」`, 'success');
@@ -625,14 +653,15 @@ ${this.escapeHTML(source)}</div>
     }
 
     openDrawer(panel, overlay, triggerBtn) {
+        this.closeShareModal();
         this.closeAllDrawers();
         panel.style.removeProperty('transform');
         panel.classList.add('active');
         overlay.classList.add('active');
-        document.body.classList.add('drawer-open');
         if (triggerBtn) {
             triggerBtn.classList.add('active');
         }
+        this.updatePageLockState();
     }
 
     closeDrawer(panel, overlay, triggerBtn) {
@@ -642,14 +671,38 @@ ${this.escapeHTML(source)}</div>
         if (triggerBtn) {
             triggerBtn.classList.remove('active');
         }
-        if (!this.settingsPanel.classList.contains('active') && !this.assistantPanel.classList.contains('active')) {
-            document.body.classList.remove('drawer-open');
-        }
+        this.updatePageLockState();
     }
 
     closeAllDrawers() {
         this.closeDrawer(this.settingsPanel, this.settingsOverlay, this.settingsBtn);
         this.closeDrawer(this.assistantPanel, this.assistantOverlay, this.assistantBtn);
+    }
+
+    updatePageLockState() {
+        const hasOpenLayer = this.settingsPanel.classList.contains('active')
+            || this.assistantPanel.classList.contains('active')
+            || this.shareModal.classList.contains('active');
+        document.body.classList.toggle('drawer-open', hasOpenLayer);
+    }
+
+    openShareModal() {
+        if (!this.editor.value.trim()) {
+            this.showToast('请先输入内容', 'error');
+            return;
+        }
+
+        this.closeAllDrawers();
+        this.shareOverlay.classList.add('active');
+        this.shareModal.classList.add('active');
+        this.updatePageLockState();
+        this.generateShareLink();
+    }
+
+    closeShareModal() {
+        this.shareOverlay.classList.remove('active');
+        this.shareModal.classList.remove('active');
+        this.updatePageLockState();
     }
 
     initDrawerGestures(panel, onClose) {
@@ -747,6 +800,7 @@ ${this.escapeHTML(source)}</div>
         this.generatedImagePrompt = '';
         localStorage.removeItem('md2html_content');
         this.resetAssistantOutputs();
+        this.resetShareState();
         this.updateStats();
         this.updateEditorSyntax();
         this.updateAssistantAvailability();
@@ -781,6 +835,120 @@ ${html}
         a.click();
         URL.revokeObjectURL(url);
         this.showToast('HTML 文件已下载', 'success');
+    }
+
+    resetShareState(message = '点击“分享”后将生成可访问页面和二维码。') {
+        this.currentShareLink = '';
+        this.shareStatus.textContent = message;
+        this.shareUrlInput.value = '';
+        this.shareQr.innerHTML = '';
+        this.shareQrPlaceholder.textContent = message.includes('二维码') ? message : '二维码生成中...';
+        this.shareQrPlaceholder.classList.remove('hidden');
+        this.copyShareLinkBtn.disabled = true;
+        this.openShareLinkBtn.disabled = true;
+    }
+
+    invalidateShareState() {
+        if (this.shareRequestInFlight) {
+            return;
+        }
+
+        if (!this.currentShareLink && !this.shareUrlInput.value) {
+            return;
+        }
+
+        this.resetShareState('内容已更新，请重新生成分享链接和二维码。');
+    }
+
+    renderShareResult(data) {
+        this.currentShareLink = data.share_url || '';
+        this.shareStatus.textContent = data.created_at_label
+            ? `《${data.title || '未命名文章'}》已生成分享页，创建时间 ${data.created_at_label}。`
+            : `《${data.title || '未命名文章'}》已生成分享页，扫码或打开链接即可查看。`;
+        this.shareUrlInput.value = this.currentShareLink;
+        this.copyShareLinkBtn.disabled = !this.currentShareLink;
+        this.openShareLinkBtn.disabled = !this.currentShareLink;
+
+        if (data.qr_svg) {
+            this.shareQr.innerHTML = data.qr_svg;
+            this.shareQrPlaceholder.classList.add('hidden');
+        } else {
+            this.shareQr.innerHTML = '';
+            this.shareQrPlaceholder.textContent = CONFIG.qrEnabled
+                ? '二维码生成失败，请复制链接访问。'
+                : '当前环境未安装二维码依赖，链接已生成，可直接复制访问。';
+            this.shareQrPlaceholder.classList.remove('hidden');
+        }
+    }
+
+    async generateShareLink() {
+        if (!this.editor.value.trim()) {
+            this.showToast('请先输入内容', 'error');
+            return;
+        }
+
+        if (this.shareRequestInFlight) {
+            return;
+        }
+
+        this.shareRequestInFlight = true;
+        this.shareBtn.disabled = true;
+        this.refreshShareBtn.disabled = true;
+        this.resetShareState('正在生成分享链接和二维码...');
+
+        try {
+            const response = await fetch('/api/share', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    markdown: this.editor.value,
+                    theme: this.currentSettings.theme,
+                    code_theme: this.currentSettings.codeTheme,
+                    font_size: this.currentSettings.fontSize,
+                    background: this.currentSettings.background
+                })
+            });
+
+            const data = await response.json();
+            if (!response.ok || !data.success) {
+                throw new Error(data.error || '分享生成失败');
+            }
+
+            this.renderShareResult(data);
+            this.showToast('分享链接已生成', 'success');
+        } catch (error) {
+            console.error('分享生成失败:', error);
+            this.resetShareState(error.message || '分享生成失败，请稍后重试。');
+            this.shareQrPlaceholder.textContent = error.message || '分享生成失败，请稍后重试。';
+            this.showToast(error.message || '分享生成失败', 'error');
+        } finally {
+            this.shareBtn.disabled = false;
+            this.refreshShareBtn.disabled = false;
+            this.shareRequestInFlight = false;
+        }
+    }
+
+    async copyShareLink() {
+        if (!this.currentShareLink) {
+            return;
+        }
+
+        try {
+            await navigator.clipboard.writeText(this.currentShareLink);
+            this.showToast('分享链接已复制', 'success');
+        } catch (error) {
+            this.showToast('复制链接失败', 'error');
+        }
+    }
+
+    openShareLink() {
+        if (!this.currentShareLink) {
+            return;
+        }
+
+        window.open(this.currentShareLink, '_blank', 'noopener,noreferrer');
     }
 
     async exportLongImage() {
@@ -932,6 +1100,7 @@ ${html}
         }
 
         this.saveContent();
+        this.invalidateShareState();
         this.updateStats();
         this.updateEditorSyntax();
         this.updatePreview();
@@ -988,6 +1157,7 @@ ${html}
         const imageMarkdown = `\n\n![AI 配图](${this.generatedImageDataUrl})\n`;
         this.editor.value = `${this.editor.value.trimEnd()}${imageMarkdown}`;
         this.saveContent();
+        this.invalidateShareState();
         this.updateStats();
         this.updateEditorSyntax();
         this.updatePreview();
