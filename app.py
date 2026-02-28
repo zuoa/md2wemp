@@ -77,6 +77,11 @@ WECHAT_API_BASE = "https://api.weixin.qq.com/cgi-bin"
 WECHAT_INLINE_IMAGE_MAX_BYTES = 1024 * 1024
 WECHAT_THUMB_IMAGE_MAX_BYTES = 64 * 1024
 AI_CONFIG_CRYPTO_VERSION = "rsa-oaep-aes-gcm-v1"
+SITE_NAME = os.getenv("SITE_NAME", "MD2WE")
+SITE_DESCRIPTION = os.getenv(
+    "SITE_DESCRIPTION",
+    "MD2WE 是一个面向微信公众号排版的 Markdown 编辑器，支持主题排版、Mermaid、AI 辅助创作、分享页和公众号草稿推送。"
+).strip()
 
 
 class AIConfigCryptoError(ValueError):
@@ -489,6 +494,114 @@ def build_article_context(md_text, limit=2200):
         "plain_text": plain_text,
         "excerpt": excerpt
     }
+
+
+def trim_meta_text(text, limit=160):
+    """裁剪适合 SEO 的描述文本。"""
+    clean = re.sub(r"\s+", " ", (text or "").strip())
+    if len(clean) <= limit:
+        return clean
+    return f"{clean[:limit - 1].rstrip()}…"
+
+
+def get_public_base_url():
+    """获取对外公开访问的站点根地址。"""
+    configured_url = (os.getenv("SITE_URL", "") or "").strip().rstrip("/")
+    if configured_url:
+        return configured_url
+    return request.url_root.rstrip("/")
+
+
+def build_public_url(endpoint, **values):
+    """生成面向搜索引擎和分享卡片的绝对地址。"""
+    return f"{get_public_base_url()}{url_for(endpoint, _external=False, **values)}"
+
+
+def get_default_og_image_url():
+    """返回默认 Open Graph 图片地址。"""
+    return (os.getenv("DEFAULT_OG_IMAGE_URL", "") or "").strip()
+
+
+def normalize_iso_timestamp(iso_text):
+    """将时间统一为 ISO 8601 格式。"""
+    if not iso_text:
+        return ""
+
+    try:
+        dt = datetime.fromisoformat(iso_text.replace("Z", "+00:00"))
+    except ValueError:
+        return ""
+    return dt.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def build_homepage_structured_data(canonical_url):
+    """构建首页结构化数据。"""
+    return {
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        "name": SITE_NAME,
+        "url": canonical_url,
+        "description": SITE_DESCRIPTION,
+        "applicationCategory": "BusinessApplication",
+        "operatingSystem": "Web",
+        "inLanguage": "zh-CN",
+        "offers": {
+            "@type": "Offer",
+            "price": "0",
+            "priceCurrency": "USD"
+        }
+    }
+
+
+def build_share_structured_data(title, description, canonical_url, published_at):
+    """构建分享页结构化数据。"""
+    structured_data = {
+        "@context": "https://schema.org",
+        "@type": "Article",
+        "headline": title,
+        "description": description,
+        "mainEntityOfPage": canonical_url,
+        "url": canonical_url,
+        "inLanguage": "zh-CN",
+        "author": {
+            "@type": "Organization",
+            "name": SITE_NAME
+        },
+        "publisher": {
+            "@type": "Organization",
+            "name": SITE_NAME
+        }
+    }
+
+    if published_at:
+        structured_data["datePublished"] = published_at
+        structured_data["dateModified"] = published_at
+
+    return structured_data
+
+
+def iter_share_sitemap_entries():
+    """遍历 sitemap 需要输出的分享页。"""
+    if not SHARE_STORAGE_DIR.exists():
+        return []
+
+    entries = []
+    for share_path in sorted(SHARE_STORAGE_DIR.glob("*.json")):
+        try:
+            payload = json.loads(share_path.read_text("utf-8"))
+        except (OSError, ValueError):
+            continue
+
+        share_id = (payload.get("id") or share_path.stem or "").strip()
+        if not share_id:
+            continue
+
+        entries.append({
+            "loc": build_public_url("share_article", share_id=share_id),
+            "lastmod": normalize_iso_timestamp(payload.get("created_at"))
+        })
+
+    return entries
 
 
 def sanitize_ai_config(ai_config=None):
@@ -2242,6 +2355,8 @@ def generate_styled_html(content, theme_config, code_theme, font_config, bg_conf
 @app.route('/')
 def index():
     """首页"""
+    canonical_url = build_public_url("index")
+    og_image_url = get_default_og_image_url()
     return render_template('index.html',
                           themes=build_theme_cards(),
                           code_themes=CODE_THEMES,
@@ -2259,7 +2374,13 @@ def index():
                                   'model': os.getenv("OPENAI_IMAGE_TOOL_MODEL", "gemini-2.5-flash-image")
                               }
                           },
-                          ai_crypto=get_ai_crypto_public_config())
+                          ai_crypto=get_ai_crypto_public_config(),
+                          site_name=SITE_NAME,
+                          seo_title=f"{SITE_NAME} - Markdown 转微信公众号工具",
+                          seo_description=SITE_DESCRIPTION,
+                          canonical_url=canonical_url,
+                          og_image_url=og_image_url,
+                          structured_data=build_homepage_structured_data(canonical_url))
 
 
 @app.route('/share/<share_id>')
@@ -2286,18 +2407,65 @@ def share_article(share_id):
         background
     )
     title = payload.get("title") or find_first_heading(markdown_text) or "未命名文章"
-    excerpt = payload.get("excerpt") or extract_plain_text_from_markdown(markdown_text)[:160]
+    excerpt = trim_meta_text(payload.get("excerpt") or extract_plain_text_from_markdown(markdown_text), 180)
+    published_at = normalize_iso_timestamp(payload.get("created_at"))
+    og_image_url = get_default_og_image_url()
+    canonical_url = build_public_url("share_article", share_id=share_id)
 
     return render_template(
         "share.html",
         title=title,
         excerpt=excerpt,
         article_html=article_html,
-        share_url=payload.get("share_url") or request.url,
+        share_url=canonical_url,
         theme_name=THEMES[theme]["name"],
         created_at_label=format_share_timestamp(payload.get("created_at")),
-        code_theme_name=CODE_THEMES[code_theme]["name"]
+        code_theme_name=CODE_THEMES[code_theme]["name"],
+        site_name=SITE_NAME,
+        canonical_url=canonical_url,
+        published_at=published_at,
+        og_image_url=og_image_url,
+        structured_data=build_share_structured_data(
+            title,
+            excerpt or title,
+            canonical_url,
+            published_at
+        )
     )
+
+
+@app.route('/robots.txt')
+def robots_txt():
+    """站点 robots 配置。"""
+    lines = [
+        "User-agent: *",
+        "Allow: /",
+        f"Sitemap: {build_public_url('sitemap_xml')}"
+    ]
+    return app.response_class("\n".join(lines) + "\n", mimetype="text/plain")
+
+
+@app.route('/sitemap.xml')
+def sitemap_xml():
+    """输出 sitemap.xml。"""
+    entries = [{
+        "loc": build_public_url("index"),
+        "lastmod": ""
+    }]
+    entries.extend(iter_share_sitemap_entries())
+
+    xml_lines = ['<?xml version="1.0" encoding="UTF-8"?>',
+                 '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">']
+
+    for entry in entries:
+        xml_lines.append("  <url>")
+        xml_lines.append(f"    <loc>{html_lib.escape(entry['loc'])}</loc>")
+        if entry.get("lastmod"):
+            xml_lines.append(f"    <lastmod>{html_lib.escape(entry['lastmod'])}</lastmod>")
+        xml_lines.append("  </url>")
+
+    xml_lines.append("</urlset>")
+    return app.response_class("\n".join(xml_lines) + "\n", mimetype="application/xml")
 
 
 @app.route('/api/convert', methods=['POST'])

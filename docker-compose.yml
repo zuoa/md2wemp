@@ -1,0 +1,21 @@
+services:
+  md2html:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: md2html
+    restart: unless-stopped
+    ports:
+      - "5566:5566"
+    environment:
+      SITE_URL: https://md2we.com
+      DEFAULT_OG_IMAGE_URL: https://md2we.com/static/og-cover.png
+    volumes:
+      - ./data:/app/data
+      - ./instance:/app/instance
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5566/api/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
