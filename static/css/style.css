@@ -529,6 +529,18 @@ body.drawer-open {
     z-index: 0;
 }
 
+.editor-selection-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+}
+
+.editor-selection-rect {
+    position: absolute;
+    border-radius: 6px;
+    background: rgba(0, 102, 255, 0.16);
+}
+
 .editor-syntax-content {
     min-height: 100%;
     margin: 0;
@@ -539,6 +551,8 @@ body.drawer-open {
     font-size: 14px;
     line-height: 1.7;
     color: #475569;
+    position: relative;
+    z-index: 1;
 }
 
 .editor-line {
@@ -559,6 +573,14 @@ body.drawer-open {
     margin-right: 8px;
     color: rgba(15, 23, 42, 0.28);
     font-weight: 700;
+}
+
+.editor-heading-space {
+    color: transparent;
+}
+
+.editor-heading-text {
+    color: inherit;
 }
 
 .editor-line-h1 {
@@ -589,6 +611,31 @@ body.drawer-open {
     content: ' ';
 }
 
+.editor-caret {
+    position: absolute;
+    width: 2px;
+    border-radius: 999px;
+    background: var(--text-primary);
+    z-index: 2;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.editor-caret.is-visible {
+    opacity: 1;
+    animation: editor-caret-blink 1.05s steps(1, end) infinite;
+}
+
+@keyframes editor-caret-blink {
+    0%, 45% {
+        opacity: 1;
+    }
+
+    46%, 100% {
+        opacity: 0;
+    }
+}
+
 #editor {
     width: 100%;
     height: 100%;
@@ -602,7 +649,7 @@ body.drawer-open {
     color: transparent;
     background: transparent;
     tab-size: 4;
-    caret-color: var(--text-primary);
+    caret-color: transparent;
     position: relative;
     z-index: 1;
     overflow: auto;
@@ -613,7 +660,11 @@ body.drawer-open {
 }
 
 #editor::selection {
-    background: rgba(0, 102, 255, 0.16);
+    background: transparent;
+}
+
+#editor::-moz-selection {
+    background: transparent;
 }
 
 #editor::-webkit-text-fill-color {

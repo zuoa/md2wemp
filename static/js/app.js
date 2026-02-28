@@ -44,6 +44,10 @@ class MD2HTML {
         this.shareRequestInFlight = false;
         this.wechatRequestInFlight = false;
         this.wechatCoverImageDataUrl = '';
+        this.editorLines = [''];
+        this.editorLineOffsets = [0];
+        this.selectionSyncFrame = null;
+        this.editorDragSelection = null;
         this.init();
     }
 
@@ -63,7 +67,10 @@ class MD2HTML {
 
     bindElements() {
         this.editor = document.getElementById('editor');
+        this.editorSyntaxLayer = document.getElementById('editorSyntaxLayer');
         this.editorSyntax = document.getElementById('editorSyntax');
+        this.editorSelectionOverlay = document.getElementById('editorSelectionOverlay');
+        this.editorCaret = document.getElementById('editorCaret');
         this.preview = document.getElementById('preview');
         this.previewWrapper = document.querySelector('.preview-wrapper');
         this.editorPanel = document.getElementById('editorPanel');
@@ -195,6 +202,7 @@ class MD2HTML {
     }
 
     bindEvents() {
+        this.editor.addEventListener('mousedown', (event) => this.handleEditorMouseDown(event));
         this.editor.addEventListener('input', () => {
             this.saveContent();
             this.invalidateShareState();
@@ -202,6 +210,10 @@ class MD2HTML {
             this.updateEditorSyntax();
             this.debounceUpdate();
         });
+        this.editor.addEventListener('select', () => this.scheduleEditorSelectionSync());
+        this.editor.addEventListener('focus', () => this.scheduleEditorSelectionSync());
+        this.editor.addEventListener('blur', () => this.scheduleEditorSelectionSync());
+        this.editor.addEventListener('keyup', () => this.scheduleEditorSelectionSync());
 
         this.editor.addEventListener('keydown', (e) => {
             if (e.key === 'Tab') {
@@ -217,6 +229,10 @@ class MD2HTML {
                 this.debounceUpdate();
             }
         });
+
+        document.addEventListener('mousemove', (event) => this.handleEditorMouseMove(event));
+        document.addEventListener('mouseup', () => this.handleEditorMouseUp());
+        window.addEventListener('resize', () => this.scheduleEditorSelectionSync());
 
         this.settingsBtn.addEventListener('click', () => this.openSettings());
         this.publishSettingsBtn.addEventListener('click', () => this.openPublishSettingsPanel());
@@ -386,6 +402,7 @@ class MD2HTML {
 
             isEditorScrolling = true;
             this.syncEditorSyntaxScroll();
+            this.scheduleEditorSelectionSync();
             const editorScrollable = this.editor.scrollHeight - this.editor.clientHeight;
             const previewScrollElement = this.getPreviewScrollElement();
             const previewScrollable = previewScrollElement.scrollHeight - previewScrollElement.clientHeight;
@@ -409,6 +426,7 @@ class MD2HTML {
             const ratio = previewScrollable > 0 ? target.scrollTop / previewScrollable : 0;
             this.editor.scrollTop = ratio * editorScrollable;
             this.syncEditorSyntaxScroll();
+            this.scheduleEditorSelectionSync();
 
             requestAnimationFrame(() => {
                 isPreviewScrolling = false;
@@ -422,10 +440,19 @@ class MD2HTML {
         }
 
         const text = this.editor.value || '';
-        const lines = text.split('\n');
-        const html = lines.map((line) => this.renderEditorLine(line)).join('');
+        this.editorLines = text.split('\n');
+        this.editorLineOffsets = [];
+
+        let offset = 0;
+        this.editorLines.forEach((line) => {
+            this.editorLineOffsets.push(offset);
+            offset += line.length + 1;
+        });
+
+        const html = this.editorLines.map((line) => this.renderEditorLine(line)).join('');
         this.editorSyntax.innerHTML = html || '<span class="editor-line editor-line-empty"></span>';
         this.syncEditorSyntaxScroll();
+        this.scheduleEditorSelectionSync();
     }
 
     renderEditorLine(line) {
@@ -437,8 +464,9 @@ class MD2HTML {
         if (headingMatch) {
             const level = headingMatch[1].length;
             const marker = this.escapeHTML(headingMatch[1]);
+            const spacing = this.escapeHTML(headingMatch[2]);
             const content = this.escapeHTML(headingMatch[3] || '');
-            return `<span class="editor-line editor-line-heading editor-line-h${level}"><span class="editor-heading-marker">${marker}</span>${content}</span>`;
+            return `<span class="editor-line editor-line-heading editor-line-h${level}"><span class="editor-heading-marker">${marker}</span><span class="editor-heading-space">${spacing}</span><span class="editor-heading-text">${content}</span></span>`;
         }
 
         return `<span class="editor-line">${this.escapeHTML(line)}</span>`;
@@ -450,6 +478,371 @@ class MD2HTML {
         }
 
         this.editorSyntax.style.transform = `translate(${-this.editor.scrollLeft}px, ${-this.editor.scrollTop}px)`;
+    }
+
+    handleEditorMouseDown(event) {
+        if (event.button !== 0 || !this.editorSyntax) {
+            return;
+        }
+
+        event.preventDefault();
+        this.editor.focus();
+
+        const anchorOffset = event.shiftKey
+            ? this.editor.selectionStart
+            : this.getEditorOffsetFromPoint(event.clientX, event.clientY);
+        const focusOffset = this.getEditorOffsetFromPoint(event.clientX, event.clientY);
+        this.editorDragSelection = { anchorOffset };
+        this.setEditorSelection(anchorOffset, focusOffset);
+    }
+
+    handleEditorMouseMove(event) {
+        if (!this.editorDragSelection) {
+            return;
+        }
+
+        const focusOffset = this.getEditorOffsetFromPoint(event.clientX, event.clientY);
+        this.setEditorSelection(this.editorDragSelection.anchorOffset, focusOffset);
+    }
+
+    handleEditorMouseUp() {
+        this.editorDragSelection = null;
+    }
+
+    setEditorSelection(anchorOffset, focusOffset) {
+        const direction = focusOffset < anchorOffset ? 'backward' : 'forward';
+        this.editor.setSelectionRange(
+            Math.min(anchorOffset, focusOffset),
+            Math.max(anchorOffset, focusOffset),
+            direction
+        );
+        this.scheduleEditorSelectionSync();
+    }
+
+    scheduleEditorSelectionSync() {
+        if (this.selectionSyncFrame) {
+            cancelAnimationFrame(this.selectionSyncFrame);
+        }
+
+        this.selectionSyncFrame = requestAnimationFrame(() => {
+            this.selectionSyncFrame = null;
+            this.updateEditorSelectionVisuals();
+        });
+    }
+
+    updateEditorSelectionVisuals() {
+        if (!this.editorSelectionOverlay || !this.editorCaret || !this.editorSyntaxLayer) {
+            return;
+        }
+
+        this.editorSelectionOverlay.innerHTML = '';
+        this.editorCaret.classList.remove('is-visible');
+
+        if (document.activeElement !== this.editor) {
+            return;
+        }
+
+        const selectionStart = this.editor.selectionStart;
+        const selectionEnd = this.editor.selectionEnd;
+
+        if (selectionStart === selectionEnd) {
+            this.renderEditorCaret(selectionStart);
+            return;
+        }
+
+        this.renderEditorSelection(selectionStart, selectionEnd);
+    }
+
+    renderEditorSelection(selectionStart, selectionEnd) {
+        const start = this.resolveEditorOffset(selectionStart);
+        const end = this.resolveEditorOffset(selectionEnd);
+        const layerRect = this.editorSyntaxLayer.getBoundingClientRect();
+
+        for (let lineIndex = start.lineIndex; lineIndex <= end.lineIndex; lineIndex += 1) {
+            const lineText = this.editorLines[lineIndex] || '';
+            const segmentStart = lineIndex === start.lineIndex ? start.column : 0;
+            const segmentEnd = lineIndex === end.lineIndex ? end.column : lineText.length;
+
+            if (segmentStart < segmentEnd) {
+                const range = this.createEditorRange(lineIndex, segmentStart, segmentEnd);
+                if (range) {
+                    Array.from(range.getClientRects()).forEach((rect) => {
+                        this.appendSelectionRect(rect, layerRect);
+                    });
+                }
+            }
+
+            if (lineIndex < end.lineIndex) {
+                const newlineRect = this.getEditorCaretRect(lineIndex, lineText.length);
+                if (newlineRect) {
+                    this.appendSelectionRect({
+                        left: newlineRect.left,
+                        top: newlineRect.top,
+                        width: 8,
+                        height: newlineRect.height
+                    }, layerRect);
+                }
+            }
+        }
+    }
+
+    appendSelectionRect(rect, layerRect) {
+        if (!rect || rect.width <= 0 || rect.height <= 0) {
+            return;
+        }
+
+        const selectionRect = document.createElement('div');
+        selectionRect.className = 'editor-selection-rect';
+        selectionRect.style.left = `${rect.left - layerRect.left}px`;
+        selectionRect.style.top = `${rect.top - layerRect.top}px`;
+        selectionRect.style.width = `${rect.width}px`;
+        selectionRect.style.height = `${rect.height}px`;
+        this.editorSelectionOverlay.appendChild(selectionRect);
+    }
+
+    renderEditorCaret(offset) {
+        const position = this.resolveEditorOffset(offset);
+        const rect = this.getEditorCaretRect(position.lineIndex, position.column);
+        const layerRect = this.editorSyntaxLayer.getBoundingClientRect();
+
+        if (!rect) {
+            return;
+        }
+
+        this.editorCaret.style.left = `${rect.left - layerRect.left}px`;
+        this.editorCaret.style.top = `${rect.top - layerRect.top}px`;
+        this.editorCaret.style.height = `${rect.height}px`;
+        this.editorCaret.classList.add('is-visible');
+    }
+
+    getEditorCaretRect(lineIndex, column) {
+        const lineElement = this.getEditorLineElement(lineIndex);
+        if (!lineElement) {
+            return null;
+        }
+
+        const lineText = this.editorLines[lineIndex] || '';
+        if (lineText.length > 0) {
+            if (column < lineText.length) {
+                const range = this.createEditorRange(lineIndex, column, column + 1);
+                const rect = range ? range.getBoundingClientRect() : null;
+                if (rect && rect.height > 0) {
+                    return {
+                        left: rect.left,
+                        top: rect.top,
+                        height: rect.height
+                    };
+                }
+            }
+
+            if (column > 0) {
+                const range = this.createEditorRange(lineIndex, column - 1, column);
+                const rect = range ? range.getBoundingClientRect() : null;
+                if (rect && rect.height > 0) {
+                    return {
+                        left: rect.right,
+                        top: rect.top,
+                        height: rect.height
+                    };
+                }
+            }
+        }
+
+        const lineRect = lineElement.getBoundingClientRect();
+        return {
+            left: lineRect.left,
+            top: lineRect.top,
+            height: lineRect.height || this.editor.getBoundingClientRect().height
+        };
+    }
+
+    getEditorOffsetFromPoint(clientX, clientY) {
+        const lineIndex = this.getEditorLineIndexFromPoint(clientY);
+        const lineElement = this.getEditorLineElement(lineIndex);
+        const lineText = this.editorLines[lineIndex] || '';
+
+        if (!lineElement) {
+            return this.editor.value.length;
+        }
+
+        const lineBounds = this.getEditorLineContentBounds(lineIndex);
+        if (clientX <= lineBounds.left) {
+            return this.getEditorGlobalOffset(lineIndex, 0);
+        }
+
+        if (clientX >= lineBounds.right) {
+            return this.getEditorGlobalOffset(lineIndex, lineText.length);
+        }
+
+        const domPoint = this.getDomPointFromCoordinates(clientX, clientY);
+        if (domPoint && lineElement.contains(domPoint.node)) {
+            const column = this.getEditorColumnFromDomPoint(lineElement, domPoint.node, domPoint.offset);
+            return this.getEditorGlobalOffset(lineIndex, column);
+        }
+
+        const column = this.findNearestEditorColumn(lineIndex, clientX);
+        return this.getEditorGlobalOffset(lineIndex, column);
+    }
+
+    getEditorLineIndexFromPoint(clientY) {
+        const lineElements = this.editorSyntax.children;
+        if (!lineElements.length) {
+            return 0;
+        }
+
+        for (let index = 0; index < lineElements.length; index += 1) {
+            const rect = lineElements[index].getBoundingClientRect();
+            if (clientY < rect.top) {
+                return Math.max(0, index - 1);
+            }
+
+            if (clientY <= rect.bottom) {
+                return index;
+            }
+        }
+
+        return lineElements.length - 1;
+    }
+
+    getEditorLineContentBounds(lineIndex) {
+        const lineText = this.editorLines[lineIndex] || '';
+        const lineElement = this.getEditorLineElement(lineIndex);
+        const lineRect = lineElement.getBoundingClientRect();
+
+        if (!lineText.length) {
+            return { left: lineRect.left, right: lineRect.left };
+        }
+
+        const startRect = this.getEditorCaretRect(lineIndex, 0);
+        const endRect = this.getEditorCaretRect(lineIndex, lineText.length);
+
+        return {
+            left: startRect ? startRect.left : lineRect.left,
+            right: endRect ? endRect.left : lineRect.right
+        };
+    }
+
+    getDomPointFromCoordinates(clientX, clientY) {
+        if (document.caretPositionFromPoint) {
+            const position = document.caretPositionFromPoint(clientX, clientY);
+            if (position) {
+                return { node: position.offsetNode, offset: position.offset };
+            }
+        }
+
+        if (document.caretRangeFromPoint) {
+            const range = document.caretRangeFromPoint(clientX, clientY);
+            if (range) {
+                return { node: range.startContainer, offset: range.startOffset };
+            }
+        }
+
+        return null;
+    }
+
+    getEditorColumnFromDomPoint(lineElement, node, offset) {
+        const range = document.createRange();
+        range.setStart(lineElement, 0);
+        range.setEnd(node, offset);
+        return Math.min(range.toString().length, (this.editorLines[this.getEditorLineIndex(lineElement)] || '').length);
+    }
+
+    findNearestEditorColumn(lineIndex, clientX) {
+        const lineText = this.editorLines[lineIndex] || '';
+        let bestColumn = 0;
+        let bestDistance = Number.POSITIVE_INFINITY;
+
+        for (let column = 0; column <= lineText.length; column += 1) {
+            const rect = this.getEditorCaretRect(lineIndex, column);
+            if (!rect) {
+                continue;
+            }
+
+            const distance = Math.abs(rect.left - clientX);
+            if (distance < bestDistance) {
+                bestDistance = distance;
+                bestColumn = column;
+            }
+        }
+
+        return bestColumn;
+    }
+
+    createEditorRange(lineIndex, startColumn, endColumn) {
+        const lineElement = this.getEditorLineElement(lineIndex);
+        if (!lineElement) {
+            return null;
+        }
+
+        const startPoint = this.getEditorDomPointForColumn(lineElement, startColumn);
+        const endPoint = this.getEditorDomPointForColumn(lineElement, endColumn);
+        const range = document.createRange();
+        range.setStart(startPoint.node, startPoint.offset);
+        range.setEnd(endPoint.node, endPoint.offset);
+        return range;
+    }
+
+    getEditorDomPointForColumn(lineElement, column) {
+        const walker = document.createTreeWalker(lineElement, NodeFilter.SHOW_TEXT);
+        let consumed = 0;
+        let lastNode = null;
+
+        while (walker.nextNode()) {
+            const currentNode = walker.currentNode;
+            const length = currentNode.textContent.length;
+
+            if (column <= consumed + length) {
+                return {
+                    node: currentNode,
+                    offset: column - consumed
+                };
+            }
+
+            consumed += length;
+            lastNode = currentNode;
+        }
+
+        if (lastNode) {
+            return {
+                node: lastNode,
+                offset: lastNode.textContent.length
+            };
+        }
+
+        return {
+            node: lineElement,
+            offset: 0
+        };
+    }
+
+    getEditorLineElement(lineIndex) {
+        return this.editorSyntax.children[lineIndex] || null;
+    }
+
+    getEditorLineIndex(lineElement) {
+        return Array.prototype.indexOf.call(this.editorSyntax.children, lineElement);
+    }
+
+    getEditorGlobalOffset(lineIndex, column) {
+        const lineOffset = this.editorLineOffsets[lineIndex] || 0;
+        const lineLength = (this.editorLines[lineIndex] || '').length;
+        return lineOffset + Math.min(column, lineLength);
+    }
+
+    resolveEditorOffset(offset) {
+        const clampedOffset = Math.max(0, Math.min(offset, this.editor.value.length));
+
+        for (let lineIndex = this.editorLineOffsets.length - 1; lineIndex >= 0; lineIndex -= 1) {
+            const lineOffset = this.editorLineOffsets[lineIndex];
+            if (clampedOffset >= lineOffset) {
+                return {
+                    lineIndex,
+                    column: Math.min(clampedOffset - lineOffset, (this.editorLines[lineIndex] || '').length)
+                };
+            }
+        }
+
+        return { lineIndex: 0, column: 0 };
     }
 
     getPreviewScrollElement() {

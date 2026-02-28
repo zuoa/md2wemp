@@ -112,8 +112,10 @@
                     </div>
                 </div>
                 <div class="editor-wrapper">
-                    <div class="editor-syntax-layer" aria-hidden="true">
+                    <div class="editor-syntax-layer" id="editorSyntaxLayer" aria-hidden="true">
+                        <div class="editor-selection-overlay" id="editorSelectionOverlay"></div>
                         <pre class="editor-syntax-content" id="editorSyntax"></pre>
+                        <div class="editor-caret" id="editorCaret"></div>
                     </div>
                     <textarea id="editor" placeholder="在此输入 Markdown 内容..." spellcheck="false"></textarea>
                 </div>
