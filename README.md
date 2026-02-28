@@ -1,4 +1,4 @@
-# MD2HTML - Markdown 转微信公众号工具
+# MD2WE - Markdown 转微信公众号工具
 
 一个面向微信公众号排版的 Markdown 编辑器，支持丰富主题、Mermaid 图表、AI 创作助手、文章分享页和公众号草稿推送。
 
