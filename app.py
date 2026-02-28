@@ -20,6 +20,8 @@ import base64
 import urllib.parse
 import urllib.request
 import ssl
+import os
+from urllib.error import HTTPError, URLError
 
 app = Flask(__name__)
 CORS(app)
@@ -267,6 +269,230 @@ BACKGROUNDS = {
 }
 
 
+def find_first_heading(md_text):
+    """提取 Markdown 中的第一个标题。"""
+    match = re.search(r'^\s{0,3}#\s+(.+?)\s*$', md_text, re.MULTILINE)
+    if match:
+        return match.group(1).strip()
+    return ""
+
+
+def extract_plain_text_from_markdown(md_text):
+    """提取适合统计和 AI 分析的纯文本内容。"""
+    text = re.sub(r'```[\s\S]*?```', ' ', md_text)
+    text = re.sub(r'`([^`]+)`', r'\1', text)
+    text = re.sub(r'!\[([^\]]*)\]\(([^)]+)\)', r'\1 ', text)
+    text = re.sub(r'\[([^\]]+)\]\(([^)]+)\)', r'\1 ', text)
+    text = re.sub(r'^\s{0,3}#{1,6}\s*', '', text, flags=re.MULTILINE)
+    text = re.sub(r'^\s{0,3}>\s?', '', text, flags=re.MULTILINE)
+    text = re.sub(r'^\s*[-*+]\s+', '', text, flags=re.MULTILINE)
+    text = re.sub(r'^\s*\d+\.\s+', '', text, flags=re.MULTILINE)
+    text = re.sub(r'[>*_~|-]+', ' ', text)
+    text = re.sub(r'\n{2,}', '\n', text)
+    return text.strip()
+
+
+def build_article_context(md_text, limit=2200):
+    """为 AI 生成紧凑的文章上下文。"""
+    title = find_first_heading(md_text) or "未命名文章"
+    plain_text = extract_plain_text_from_markdown(md_text)
+    excerpt = plain_text[:limit]
+    return {
+        "title": title,
+        "plain_text": plain_text,
+        "excerpt": excerpt
+    }
+
+
+def sanitize_ai_config(ai_config=None):
+    """归一化 AI 配置，允许文本和图片分别覆盖环境变量。"""
+    ai_config = ai_config or {}
+    text_config = ai_config.get("text") or {}
+    image_config = ai_config.get("image") or {}
+    return {
+        "text": {
+            "api_key": (text_config.get("api_key") or os.getenv("OPENAI_API_KEY", "")).strip(),
+            "base_url": (text_config.get("base_url") or os.getenv("OPENAI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta/openai")).strip().rstrip("/"),
+            "model": (text_config.get("model") or os.getenv("OPENAI_TEXT_MODEL", "gemini-2.5-flash")).strip()
+        },
+        "image": {
+            "api_key": (image_config.get("api_key") or os.getenv("OPENAI_API_KEY", "")).strip(),
+            "base_url": (image_config.get("base_url") or os.getenv("OPENAI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta/openai")).strip().rstrip("/"),
+            "model": (image_config.get("model") or os.getenv("OPENAI_IMAGE_TOOL_MODEL", "imagen-4.0-generate-001")).strip()
+        }
+    }
+
+
+def has_ai_capability(ai_config=None, capability="any"):
+    """判断当前是否有可用的 AI 配置。"""
+    config = sanitize_ai_config(ai_config)
+    if capability == "text":
+        return bool(config["text"]["api_key"])
+    if capability == "image":
+        return bool(config["image"]["api_key"])
+    return bool(config["text"]["api_key"] or config["image"]["api_key"])
+
+
+def openai_api_request(path, payload, timeout=60, ai_config=None, capability="text"):
+    """调用 OpenAI API。"""
+    config = sanitize_ai_config(ai_config)
+    target_config = config["text"] if capability == "text" else config["image"]
+    api_key = target_config["api_key"]
+    if not api_key:
+        raise RuntimeError("未配置 OPENAI_API_KEY，AI 功能不可用")
+
+    url = f"{target_config['base_url']}{path}"
+    data = json.dumps(payload).encode("utf-8")
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
+    req = urllib.request.Request(url, data=data, headers=headers, method="POST")
+
+    try:
+        with urllib.request.urlopen(req, timeout=timeout, context=ssl.create_default_context()) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="ignore")
+        message = body
+        try:
+            error_data = json.loads(body)
+            message = error_data.get("error", {}).get("message") or body
+        except json.JSONDecodeError:
+            pass
+        raise RuntimeError(f"OpenAI 请求失败: {message}") from exc
+    except URLError as exc:
+        raise RuntimeError(f"OpenAI 网络请求失败: {exc.reason}") from exc
+
+
+def extract_chat_completion_text(response_data):
+    """从 Chat Completions 响应中提取文本。"""
+    choices = response_data.get("choices", [])
+    if not choices:
+        return ""
+
+    message = choices[0].get("message", {})
+    content = message.get("content", "")
+    if isinstance(content, str):
+        return content.strip()
+
+    if isinstance(content, list):
+        parts = []
+        for item in content:
+            if isinstance(item, str):
+                parts.append(item)
+            elif isinstance(item, dict):
+                text_value = item.get("text") or item.get("content", "")
+                if text_value:
+                    parts.append(text_value)
+        return "\n".join(parts).strip()
+
+    return ""
+
+
+def call_openai_text(system_prompt, user_prompt, max_output_tokens=500, ai_config=None):
+    """调用 OpenAI-compatible Chat Completions API 生成文本。"""
+    config = sanitize_ai_config(ai_config)
+    payload = {
+        "model": config["text"]["model"],
+        "messages": [
+            {
+                "role": "system",
+                "content": system_prompt
+            },
+            {
+                "role": "user",
+                "content": user_prompt
+            }
+        ],
+        "max_tokens": max_output_tokens
+    }
+    response_data = openai_api_request("/chat/completions", payload, timeout=60, ai_config=config, capability="text")
+    text = extract_chat_completion_text(response_data)
+    if not text:
+        raise RuntimeError("AI 没有返回可解析的文本结果")
+    return text
+
+
+def generate_ai_title_suggestions(md_text, ai_config=None):
+    """基于文章内容生成标题建议。"""
+    context = build_article_context(md_text)
+    system_prompt = (
+        "你是一名中文内容编辑。请根据文章内容生成标题建议。"
+        "标题必须准确、克制、适合公众号文章，避免夸张标题党。"
+        "直接返回 5 行标题，每行一个，不要编号，不要解释。"
+    )
+    user_prompt = (
+        f"文章标题（如有）: {context['title']}\n\n"
+        f"文章正文摘要:\n{context['excerpt']}"
+    )
+    text = call_openai_text(system_prompt, user_prompt, max_output_tokens=220, ai_config=ai_config)
+    suggestions = []
+    for line in text.splitlines():
+        cleaned = re.sub(r'^\s*[-*\d.、)\]]+\s*', '', line).strip().strip('"\'' )
+        if cleaned:
+            suggestions.append(cleaned)
+    deduped = []
+    seen = set()
+    for item in suggestions:
+        if item not in seen:
+            deduped.append(item)
+            seen.add(item)
+    return deduped[:5]
+
+
+def generate_ai_summary(md_text, ai_config=None):
+    """生成文章摘要。"""
+    context = build_article_context(md_text)
+    system_prompt = (
+        "你是一名中文编辑。请输出一段适合作为文章摘要的内容。"
+        "要求 90 到 140 个中文字符，信息密度高，语气自然，不要使用项目符号，不要以“本文”开头。"
+    )
+    user_prompt = (
+        f"文章标题: {context['title']}\n\n"
+        f"文章正文:\n{context['excerpt']}"
+    )
+    return call_openai_text(system_prompt, user_prompt, max_output_tokens=180, ai_config=ai_config).replace("\n", " ").strip()
+
+
+def extract_generated_image(response_data):
+    """从 Images API 响应中提取图片。"""
+    for item in response_data.get("data", []):
+        image_base64 = item.get("b64_json")
+        if image_base64:
+            return image_base64, item.get("revised_prompt", "")
+    raise RuntimeError("AI 没有返回可解析的图片结果")
+
+
+def generate_ai_image(md_text, focus_prompt="", ai_config=None):
+    """为文章生成配图。"""
+    context = build_article_context(md_text, limit=2600)
+    config = sanitize_ai_config(ai_config)
+    prompt_parts = [
+        "请为一篇中文文章生成一张横版头图插画。",
+        "风格要求：现代 editorial illustration，干净、有层次、适合知识型文章。",
+        "输出要求：16:9 横图，不包含任何文字、Logo、水印、边框、按钮或界面元素。",
+        f"文章标题：{context['title']}",
+        f"文章核心内容：{context['excerpt']}"
+    ]
+    if focus_prompt:
+        prompt_parts.append(f"额外侧重点：{focus_prompt.strip()}")
+
+    payload = {
+        "model": config["image"]["model"],
+        "prompt": "\n".join(prompt_parts),
+        "size": "1536x1024",
+        "response_format": "b64_json",
+        "n": 1
+    }
+    response_data = openai_api_request("/images/generations", payload, timeout=180, ai_config=config, capability="image")
+    image_base64, revised_prompt = extract_generated_image(response_data)
+    return {
+        "image_data_url": f"data:image/png;base64,{image_base64}",
+        "revised_prompt": revised_prompt
+    }
+
+
 def highlight_code(code, language, style_name):
     """使用 Pygments 高亮代码"""
     try:
@@ -430,10 +656,16 @@ def process_markdown(md_text, theme="default", code_theme="github", font_size="m
 
     # 提取并临时替换代码块
     code_blocks = []
+    mermaid_blocks = []
 
     def save_code_block(match):
-        lang = match.group(1) or ''
+        lang = (match.group(1) or '').strip()
         code = match.group(2)
+        if lang.lower() == 'mermaid':
+            placeholder = f'MERMAIDPLACEHOLDER{len(mermaid_blocks)}ENDPLACEHOLDER'
+            mermaid_blocks.append(code.strip())
+            return placeholder
+
         placeholder = f'CODEBLOCKPLACEHOLDER{len(code_blocks)}ENDPLACEHOLDER'
         code_blocks.append((lang, code))
         return placeholder
@@ -464,6 +696,26 @@ def process_markdown(md_text, theme="default", code_theme="github", font_size="m
         # 尝试多种替换方式
         html_content = html_content.replace(f'<p>{placeholder}</p>', code_html)
         html_content = html_content.replace(placeholder, code_html)
+
+    # 恢复 Mermaid 图表占位，交由前端渲染为 SVG
+    mermaid_bg = theme_config['styles'].get('blockquote_bg', '#f8f9fa')
+    mermaid_text = theme_config['styles'].get('secondary_text', '#666666')
+    mermaid_border = theme_config['colors'][1]
+    mermaid_radius = theme_config['styles'].get('border_radius', '8px')
+    mermaid_border_rgba = mermaid_border if mermaid_border.startswith('rgba') else f"rgba({int(mermaid_border[1:3], 16)}, {int(mermaid_border[3:5], 16)}, {int(mermaid_border[5:7], 16)}, 0.22)"
+
+    for i, code in enumerate(mermaid_blocks):
+        placeholder = f'MERMAIDPLACEHOLDER{i}ENDPLACEHOLDER'
+        encoded = base64.b64encode(code.encode('utf-8')).decode('utf-8')
+        mermaid_html = (
+            f'<div class="md2-mermaid" data-mermaid="{encoded}" '
+            f'style="margin: 18px 0; padding: 16px; border: 1px dashed {mermaid_border_rgba}; '
+            f'border-radius: {mermaid_radius}; background: {mermaid_bg}; overflow-x: auto;">'
+            f'<div class="md2-mermaid-status" style="font-size: 12px; color: {mermaid_text};">'
+            'Mermaid 图表渲染中...</div></div>'
+        )
+        html_content = html_content.replace(f'<p>{placeholder}</p>', mermaid_html)
+        html_content = html_content.replace(placeholder, mermaid_html)
 
     # 恢复横屏滑动幻灯片（在代码块之后，generate_styled_html 之前）
     for i, slider_content in enumerate(sliders):
@@ -954,7 +1206,18 @@ def index():
                           themes=themes_with_card_color,
                           code_themes=CODE_THEMES,
                           font_sizes=FONT_SIZES,
-                          backgrounds=BACKGROUNDS)
+                          backgrounds=BACKGROUNDS,
+                          ai_enabled=has_ai_capability(),
+                          ai_defaults={
+                              'text': {
+                                  'base_url': os.getenv("OPENAI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta/openai"),
+                                  'model': os.getenv("OPENAI_TEXT_MODEL", "gemini-2.5-flash")
+                              },
+                              'image': {
+                                  'base_url': os.getenv("OPENAI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta/openai"),
+                                  'model': os.getenv("OPENAI_IMAGE_TOOL_MODEL", "imagen-4.0-generate-001")
+                              }
+                          })
 
 
 @app.route('/api/convert', methods=['POST'])
@@ -1002,6 +1265,77 @@ def api_convert():
         }), 500
 
 
+@app.route('/api/ai/title-suggestions', methods=['POST'])
+def api_ai_title_suggestions():
+    """AI 标题建议。"""
+    try:
+        data = request.get_json() or {}
+        md_text = data.get('markdown', '')
+        ai_config = data.get('ai_config') or {}
+        if not md_text.strip():
+            return jsonify({'success': False, 'error': '请先输入文章内容'}), 400
+
+        suggestions = generate_ai_title_suggestions(md_text, ai_config=ai_config)
+        if not suggestions:
+            return jsonify({'success': False, 'error': '未生成可用标题'}), 500
+
+        return jsonify({
+            'success': True,
+            'suggestions': suggestions
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/ai/summary', methods=['POST'])
+def api_ai_summary():
+    """AI 文章摘要。"""
+    try:
+        data = request.get_json() or {}
+        md_text = data.get('markdown', '')
+        ai_config = data.get('ai_config') or {}
+        if not md_text.strip():
+            return jsonify({'success': False, 'error': '请先输入文章内容'}), 400
+
+        summary = generate_ai_summary(md_text, ai_config=ai_config)
+        return jsonify({
+            'success': True,
+            'summary': summary
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/ai/generate-image', methods=['POST'])
+def api_ai_generate_image():
+    """AI 文章配图。"""
+    try:
+        data = request.get_json() or {}
+        md_text = data.get('markdown', '')
+        focus_prompt = data.get('focus_prompt', '')
+        ai_config = data.get('ai_config') or {}
+        if not md_text.strip():
+            return jsonify({'success': False, 'error': '请先输入文章内容'}), 400
+
+        result = generate_ai_image(md_text, focus_prompt, ai_config=ai_config)
+        return jsonify({
+            'success': True,
+            'image_data_url': result['image_data_url'],
+            'revised_prompt': result.get('revised_prompt', '')
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
 @app.route('/api/themes', methods=['GET'])
 def api_themes():
     """API接口：获取所有主题"""
@@ -1009,7 +1343,18 @@ def api_themes():
         'themes': THEMES,
         'code_themes': CODE_THEMES,
         'font_sizes': FONT_SIZES,
-        'backgrounds': BACKGROUNDS
+        'backgrounds': BACKGROUNDS,
+        'ai_enabled': has_ai_capability(),
+        'ai_defaults': {
+            'text': {
+                'base_url': os.getenv("OPENAI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta/openai"),
+                'model': os.getenv("OPENAI_TEXT_MODEL", "gemini-2.5-flash")
+            },
+            'image': {
+                'base_url': os.getenv("OPENAI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta/openai"),
+                'model': os.getenv("OPENAI_IMAGE_TOOL_MODEL", "imagen-4.0-generate-001")
+            }
+        }
     })
 
 

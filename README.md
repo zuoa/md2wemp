@@ -1,14 +1,16 @@
 # MD2HTML - Markdown 转微信公众号工具
 
-一个简洁优雅的 Markdown 转微信公众号 HTML 工具，支持丰富的主题和 API 调用。
+一个面向微信公众号排版的 Markdown 编辑器，支持丰富主题、Mermaid 图表、AI 创作助手和长图导出。
 
 ## 功能特点
 
-- 🎨 **12种精美主题** - 默认、运动风、中国风、赛博朋克、海洋风、森林风、日落风、薰衣草、咖啡风、极简风、科技风、复古风
-- 💻 **8种代码高亮** - GitHub、Monokai、Dracula、Atom One Dark 等
-- 📝 **实时预览** - 边写边看，所见即所得
-- 📋 **一键复制** - 直接复制到微信公众号编辑器
-- 🔌 **API 支持** - 支持通过 API 调用进行批量转换
+- 🎨 **12 种精美主题** - 默认、运动风、中国风、赛博朋克、海洋风、森林风、日落风、薰衣草、咖啡风、极简风、科技风、复古风
+- 💻 **8 种代码高亮** - GitHub、Monokai、Dracula、Atom One Dark 等
+- 📈 **Mermaid 图表支持** - 直接在 Markdown 中写 `mermaid` 代码块，预览自动渲染为 SVG
+- 🤖 **AI 创作助手** - 支持标题建议、文章摘要、文章配图生成
+- ⏱️ **增强统计** - 汉字数、英文词数、预计阅读时间、标题数、图片数、行数
+- 🖼️ **导出长图** - 将当前预览一键导出为 PNG 长图
+- 📋 **一键复制 / 下载 HTML** - 直接复制到微信公众号编辑器或导出 HTML
 - 💾 **自动保存** - 内容自动保存到本地存储
 
 ## 快速开始
@@ -16,16 +18,41 @@
 ### 安装依赖
 
 ```bash
-pip install -r requirements.txt
+python3 -m pip install -r requirements.txt
 ```
 
 ### 启动服务
 
 ```bash
-python app.py
+python3 app.py
 ```
 
-访问 http://localhost:5555 即可使用。
+访问 `http://localhost:5566` 即可使用。
+
+### 可选：启用 AI 能力
+
+如果需要标题建议、摘要生成、AI 配图，请配置 OpenAI 环境变量：
+
+```bash
+export OPENAI_API_KEY=your_key_here
+```
+
+可选覆盖项：
+
+```bash
+export OPENAI_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai
+export OPENAI_TEXT_MODEL=gemini-2.5-flash
+export OPENAI_IMAGE_TOOL_MODEL=imagen-4.0-generate-001
+```
+
+也可以直接在网页的“创作助手 > AI 配置”中填写：
+
+- `Base URL`
+- `文本模型`
+- `图片模型`
+- `API Key`
+
+页面配置优先于服务端环境变量，且仅保存在当前浏览器本地。
 
 ## API 接口
 
@@ -59,7 +86,44 @@ python app.py
 
 **GET** `/api/themes`
 
-返回所有可用的主题、代码高亮、字体大小和背景配置。
+返回所有可用的主题、代码高亮、字体大小和背景配置，以及当前是否启用 AI。
+
+### AI 标题建议
+
+**POST** `/api/ai/title-suggestions`
+
+请求体：
+
+```json
+{
+  "markdown": "# 一篇文章\n\n正文内容"
+}
+```
+
+### AI 摘要
+
+**POST** `/api/ai/summary`
+
+请求体：
+
+```json
+{
+  "markdown": "# 一篇文章\n\n正文内容"
+}
+```
+
+### AI 配图
+
+**POST** `/api/ai/generate-image`
+
+请求体：
+
+```json
+{
+  "markdown": "# 一篇文章\n\n正文内容",
+  "focus_prompt": "科技感、极简插画"
+}
+```
 
 ## 参数说明
 
@@ -110,6 +174,7 @@ python app.py
 ## 键盘快捷键
 
 - `Ctrl/Cmd + S` - 复制 HTML
+- `Ctrl/Cmd + ,` - 打开设置
 - `Esc` - 关闭设置面板
 
 ## 技术栈
@@ -117,7 +182,9 @@ python app.py
 - 后端：Python Flask
 - 前端：原生 HTML/CSS/JS
 - Markdown 解析：Python-Markdown
-- 代码高亮：Highlight.js
+- 代码高亮：Pygments
+- 图表渲染：Mermaid
+- 长图导出：html2canvas
 
 ## License
 

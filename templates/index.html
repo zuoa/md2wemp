@@ -3,8 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MD2WEMP - Markdown 转微信公众号工具</title>
+    <title>MD2WE - Markdown 转微信公众号工具</title>
     <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" id="codeThemeLink" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
 </head>
 <body>
@@ -12,26 +15,62 @@
         <!-- Header -->
         <header class="header">
             <div class="logo">
-                <svg class="logo-icon" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <!-- 背景圆角矩形 -->
-                    <rect x="2" y="2" width="36" height="36" rx="8" fill="url(#logoGradient)"/>
-                    <!-- 渐变定义 -->
+                <svg class="logo-icon" viewBox="0 0 56 56" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                     <defs>
-                        <linearGradient id="logoGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                            <stop offset="0%" style="stop-color:#6366f1"/>
-                            <stop offset="100%" style="stop-color:#8b5cf6"/>
+                        <linearGradient id="logoPlate" x1="8" y1="6" x2="48" y2="50" gradientUnits="userSpaceOnUse">
+                            <stop offset="0" stop-color="#08111f"/>
+                            <stop offset="0.52" stop-color="#143a7a"/>
+                            <stop offset="1" stop-color="#19c2c8"/>
+                        </linearGradient>
+                        <linearGradient id="logoBlade" x1="18" y1="17" x2="40" y2="39" gradientUnits="userSpaceOnUse">
+                            <stop offset="0" stop-color="#ffffff"/>
+                            <stop offset="1" stop-color="#d8f7ff"/>
                         </linearGradient>
                     </defs>
-                    <!-- M 字母 -->
-                    <path d="M10 28V12L15 22L20 12V28" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-                    <!-- D 字母 -->
-                    <path d="M22 12H26C28.2091 12 30 13.7909 30 16V24C30 26.2091 28.2091 28 26 28H22V12Z" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-                    <!-- 箭头符号 -->
-                    <path d="M32 20H36M34 18L36 20L34 22" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                    <rect x="4" y="4" width="48" height="48" rx="14" fill="url(#logoPlate)"/>
+                    <rect x="4.5" y="4.5" width="47" height="47" rx="13.5" stroke="rgba(255,255,255,0.18)"/>
+                    <path d="M17 38V18L24 29L31 18V38" stroke="url(#logoBlade)" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M35 18H38.5C42.0899 18 45 20.9101 45 24.5V31.5C45 35.0899 42.0899 38 38.5 38H35V18Z" stroke="url(#logoBlade)" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M15 13H41" stroke="rgba(255,255,255,0.26)" stroke-width="1.5" stroke-linecap="round"/>
+                    <circle cx="18" cy="13" r="1.3" fill="#6EE7F9"/>
+                    <path d="M15 44H41" stroke="rgba(255,255,255,0.16)" stroke-width="1.5" stroke-linecap="round"/>
+                    <path d="M40 12L44 8" stroke="#6EE7F9" stroke-width="2.2" stroke-linecap="round"/>
+                    <path d="M41.5 17.5H46.5" stroke="#6EE7F9" stroke-width="2.2" stroke-linecap="round"/>
                 </svg>
-                <span class="logo-text">MD<span>2</span>WEMP</span>
+                <div class="logo-lockup">
+                    <span class="logo-text">MD2WE</span>
+                    <span class="logo-tag">Markdown to WeChat Editor</span>
+                </div>
+            </div>
+            <div class="header-summary" id="headerSummary" aria-label="当前设置摘要">
+                <span class="summary-chip">
+                    主题
+                    <strong id="summaryTheme">默认主题</strong>
+                </span>
+                <span class="summary-chip">
+                    代码
+                    <strong id="summaryCodeTheme">GitHub</strong>
+                </span>
+                <span class="summary-chip">
+                    字号
+                    <strong id="summaryFontSize">中号字体</strong>
+                </span>
+                <span class="summary-chip">
+                    预览
+                    <strong id="summaryPreviewMode">移动端</strong>
+                </span>
+                <span class="summary-chip summary-chip-status {% if ai_enabled %}is-ready{% else %}is-offline{% endif %}" id="summaryAIChip">
+                    AI
+                    <strong id="summaryAIStatus">{% if ai_enabled %}已连接{% else %}未配置{% endif %}</strong>
+                </span>
             </div>
             <div class="header-actions">
+                <button class="btn btn-outline" id="assistantBtn" title="创作助手">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 3l1.9 3.86L18 8.27l-3 2.92.71 4.14L12 13.77l-3.71 1.56.71-4.14-3-2.92 4.1-1.41L12 3z"></path>
+                    </svg>
+                    创作助手
+                </button>
                 <button class="btn btn-outline" id="settingsBtn" title="设置 (Ctrl+,)">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <circle cx="12" cy="12" r="3"></circle>
@@ -68,24 +107,32 @@
                                 <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
                             </svg>
                         </button>
-                        <button class="btn-icon" id="downloadBtn" title="下载 HTML">
-                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                                <polyline points="7 10 12 15 17 10"></polyline>
-                                <line x1="12" y1="15" x2="12" y2="3"></line>
-                            </svg>
-                        </button>
                     </div>
                 </div>
                 <div class="editor-wrapper">
+                    <div class="editor-syntax-layer" aria-hidden="true">
+                        <pre class="editor-syntax-content" id="editorSyntax"></pre>
+                    </div>
                     <textarea id="editor" placeholder="在此输入 Markdown 内容..." spellcheck="false"></textarea>
                 </div>
                 <div class="stats-bar">
                     <span class="stat-item">
-                        字数 <span class="stat-value" id="charCount">0</span>
+                        汉字 <span class="stat-value" id="charCount">0</span>
                     </span>
                     <span class="stat-item">
-                        字符 <span class="stat-value" id="totalCount">0</span>
+                        英文词 <span class="stat-value" id="wordCount">0</span>
+                    </span>
+                    <span class="stat-item">
+                        总字符 <span class="stat-value" id="totalCount">0</span>
+                    </span>
+                    <span class="stat-item">
+                        阅读 <span class="stat-value" id="readingTime">0 分钟</span>
+                    </span>
+                    <span class="stat-item">
+                        标题 <span class="stat-value" id="headingCount">0</span>
+                    </span>
+                    <span class="stat-item">
+                        图片 <span class="stat-value" id="imageCount">0</span>
                     </span>
                     <span class="stat-item">
                         行数 <span class="stat-value" id="lineCount">0</span>
@@ -99,14 +146,14 @@
             <!-- Preview Panel -->
             <div class="preview-panel" id="previewPanel">
                 <div class="panel-header">
-                    <span class="panel-title">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
-                            <circle cx="12" cy="12" r="3"></circle>
-                        </svg>
-                        预览
-                    </span>
-                    <div class="panel-actions">
+                    <div class="panel-title-group">
+                        <span class="panel-title">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                                <circle cx="12" cy="12" r="3"></circle>
+                            </svg>
+                            预览
+                        </span>
                         <div class="preview-mode-toggle" id="previewModeToggle">
                             <button class="mode-btn active" data-mode="pc" title="PC端预览">
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -122,6 +169,24 @@
                                 </svg>
                             </button>
                         </div>
+                    </div>
+                    <div class="panel-actions">
+                        <button class="btn btn-outline btn-panel-action" id="downloadBtn" title="下载 HTML">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                <polyline points="7 10 12 15 17 10"></polyline>
+                                <line x1="12" y1="15" x2="12" y2="3"></line>
+                            </svg>
+                            下载 HTML
+                        </button>
+                        <button class="btn btn-outline btn-panel-action" id="exportImageBtn" title="导出长图">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <rect x="3" y="3" width="18" height="18" rx="2"></rect>
+                                <path d="M8 12h8"></path>
+                                <path d="M12 8v8"></path>
+                            </svg>
+                            导出长图
+                        </button>
                         <span class="theme-badge" id="currentThemeBadge">默认主题</span>
                     </div>
                 </div>
@@ -132,10 +197,13 @@
         </main>
 
         <!-- Settings Panel -->
-        <div class="settings-overlay" id="settingsOverlay"></div>
-        <div class="settings-panel" id="settingsPanel">
-            <div class="settings-header">
-                <h2>设置</h2>
+        <div class="drawer-overlay" id="settingsOverlay"></div>
+        <div class="drawer-panel drawer-panel-right settings-panel" id="settingsPanel">
+            <div class="drawer-header settings-header">
+                <div>
+                    <div class="drawer-grip" aria-hidden="true"></div>
+                    <h2>设置</h2>
+                </div>
                 <button class="btn-close" id="closeSettings" aria-label="关闭">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <line x1="18" y1="6" x2="6" y2="18"></line>
@@ -143,7 +211,7 @@
                     </svg>
                 </button>
             </div>
-            <div class="settings-content">
+            <div class="drawer-content settings-content">
                 <!-- Theme Section -->
                 <div class="settings-section">
                     <h3 class="section-title">主题风格</h3>
@@ -224,6 +292,129 @@
             </div>
         </div>
 
+        <div class="drawer-overlay" id="assistantOverlay"></div>
+        <div class="drawer-panel drawer-panel-right assistant-panel" id="assistantPanel">
+            <div class="drawer-header assistant-panel-header">
+                <div>
+                    <div class="drawer-grip" aria-hidden="true"></div>
+                    <p class="assistant-kicker">Creative Assistant</p>
+                    <h2>AI 创作助手</h2>
+                </div>
+                <button class="btn-close" id="closeAssistant" aria-label="关闭助手">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+            </div>
+            <div class="drawer-content assistant-panel-content">
+                <div class="assistant-studio">
+                    <div class="settings-section assistant-config-section">
+                        <h3 class="section-title">AI 配置</h3>
+                        <div class="ai-config-card">
+                            <div class="ai-config-tabs" id="aiConfigTabs">
+                                <button class="ai-config-tab active" type="button" data-tab="text">文本 AI</button>
+                                <button class="ai-config-tab" type="button" data-tab="image">图片 AI</button>
+                            </div>
+
+                            <div class="ai-config-panel active" data-panel="text">
+                                <div class="ai-config-group">
+                                    <h4 class="ai-config-title">文本 AI</h4>
+                                    <label class="field-label" for="aiTextBaseUrlInput">Base URL</label>
+                                    <input id="aiTextBaseUrlInput" class="text-field" type="text" placeholder="https://generativelanguage.googleapis.com/v1beta/openai">
+
+                                    <label class="field-label" for="aiTextModelInput">Model</label>
+                                    <input id="aiTextModelInput" class="text-field" type="text" placeholder="gemini-2.5-flash">
+
+                                    <label class="field-label" for="aiTextApiKeyInput">API Key</label>
+                                    <input id="aiTextApiKeyInput" class="text-field" type="password" placeholder="sk-...">
+                                </div>
+                            </div>
+
+                            <div class="ai-config-panel" data-panel="image">
+                                <div class="ai-config-group">
+                                    <h4 class="ai-config-title">图片 AI</h4>
+                                    <label class="field-label" for="aiImageBaseUrlInput">Base URL</label>
+                                    <input id="aiImageBaseUrlInput" class="text-field" type="text" placeholder="https://generativelanguage.googleapis.com/v1beta/openai">
+
+                                    <label class="field-label" for="aiImageModelInput">Model</label>
+                                    <input id="aiImageModelInput" class="text-field" type="text" placeholder="imagen-4.0-generate-001">
+
+                                    <label class="field-label" for="aiImageApiKeyInput">API Key</label>
+                                    <input id="aiImageApiKeyInput" class="text-field" type="password" placeholder="sk-...">
+                                </div>
+                            </div>
+
+                            <div class="ai-config-actions">
+                                <button class="btn btn-outline" id="saveAiConfigBtn">保存 AI 配置</button>
+                                <button class="btn btn-outline" id="resetAiConfigBtn">恢复默认</button>
+                            </div>
+                            <p class="settings-hint">文本和图片分别使用各自的 Base URL、Model、API Key。留空时回退到服务端环境变量。API Key 仅保存在当前浏览器本地。</p>
+                        </div>
+                    </div>
+
+                    <div class="assistant-studio-header">
+                        <div>
+                            <h3>创作增强</h3>
+                            <p class="assistant-caption">标题、摘要、配图和长图导出都集中在这里处理。</p>
+                        </div>
+                        <span class="assistant-status {% if ai_enabled %}is-ready{% else %}is-offline{% endif %}" id="assistantAIStatusBadge">
+                            {% if ai_enabled %}AI 已连接{% else %}未配置 OPENAI_API_KEY{% endif %}
+                        </span>
+                    </div>
+                    <div class="assistant-action-row">
+                        <button class="btn btn-secondary action-chip" id="suggestTitlesBtn">
+                            AI 标题建议
+                        </button>
+                        <button class="btn btn-secondary action-chip" id="generateSummaryBtn">
+                            一键摘要
+                        </button>
+                        <button class="btn btn-secondary action-chip" id="generateImageBtn">
+                            AI 配图生成
+                        </button>
+                    </div>
+                    <div class="assistant-inline-row">
+                        <input id="imageFocusInput" class="assistant-input" type="text" placeholder="配图侧重点（可选）：比如科技感、极简插画、人物场景">
+                        <button class="btn btn-outline" id="insertGeneratedImageBtn" disabled>插入文末</button>
+                        <button class="btn btn-outline" id="downloadGeneratedImageBtn" disabled>下载配图</button>
+                    </div>
+                    <div class="assistant-grid">
+                        <section class="assistant-card">
+                            <div class="assistant-card-head">
+                                <span>标题建议</span>
+                                <span class="assistant-caption">点击即可替换文首 H1</span>
+                            </div>
+                            <div id="titleSuggestionsList" class="assistant-card-body muted">
+                                生成后将在这里显示 3-5 个备选标题。
+                            </div>
+                        </section>
+                        <section class="assistant-card">
+                            <div class="assistant-card-head">
+                                <span>文章摘要</span>
+                                <button class="text-action" id="copySummaryBtn" disabled>复制摘要</button>
+                            </div>
+                            <div id="summaryOutput" class="assistant-card-body muted">
+                                点击“一键摘要”生成适合文章导语、封面说明或摘要栏的文案。
+                            </div>
+                        </section>
+                        <section class="assistant-card assistant-card-image">
+                            <div class="assistant-card-head">
+                                <span>AI 配图</span>
+                                <span class="assistant-caption">默认生成 16:9 头图</span>
+                            </div>
+                            <div id="generatedImageState" class="assistant-card-body muted">
+                                尚未生成配图。
+                            </div>
+                            <div id="generatedImagePanel" class="generated-image-panel hidden">
+                                <img id="generatedImagePreview" alt="AI 生成配图">
+                                <p id="generatedImagePrompt" class="assistant-caption"></p>
+                            </div>
+                        </section>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Toast -->
         <div class="toast" id="toast"></div>
     </div>
@@ -233,9 +424,13 @@
             themes: {{ themes | tojson }},
             codeThemes: {{ code_themes | tojson }},
             fontSizes: {{ font_sizes | tojson }},
-            backgrounds: {{ backgrounds | tojson }}
+            backgrounds: {{ backgrounds | tojson }},
+            aiEnabled: {{ ai_enabled | tojson }},
+            aiDefaults: {{ ai_defaults | tojson }}
         };
     </script>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
     <script src="/static/js/app.js"></script>
 </body>
 </html>
