@@ -29,6 +29,19 @@ from datetime import datetime, timezone
 from urllib.error import HTTPError, URLError
 
 try:
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import padding, rsa
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+    CRYPTOGRAPHY_AVAILABLE = True
+except ImportError:
+    hashes = None
+    serialization = None
+    padding = None
+    rsa = None
+    AESGCM = None
+    CRYPTOGRAPHY_AVAILABLE = False
+
+try:
     import qrcode
     from qrcode.image.svg import SvgPathImage
     QR_CODE_AVAILABLE = True
@@ -62,6 +75,122 @@ SHARE_STORAGE_DIR = Path(app.root_path) / "data" / "shares"
 WECHAT_API_BASE = "https://api.weixin.qq.com/cgi-bin"
 WECHAT_INLINE_IMAGE_MAX_BYTES = 1024 * 1024
 WECHAT_THUMB_IMAGE_MAX_BYTES = 64 * 1024
+AI_CONFIG_CRYPTO_VERSION = "rsa-oaep-aes-gcm-v1"
+
+
+class AIConfigCryptoError(ValueError):
+    """AI 参数加解密失败。"""
+
+
+def normalize_pem_text(raw_value):
+    """将环境变量中的 PEM 文本恢复为标准格式。"""
+    return (raw_value or "").strip().replace("\\n", "\n")
+
+
+def build_ai_crypto_state():
+    """初始化 AI 参数传输加密所需的密钥。"""
+    if not CRYPTOGRAPHY_AVAILABLE:
+        return {
+            "enabled": False,
+            "public_key_pem": ""
+        }
+
+    private_key_pem = normalize_pem_text(os.getenv("AI_CONFIG_PRIVATE_KEY_PEM", ""))
+    if private_key_pem:
+        private_key = serialization.load_pem_private_key(private_key_pem.encode("utf-8"), password=None)
+    else:
+        private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+
+    public_key_pem = private_key.public_key().public_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo
+    ).decode("utf-8")
+
+    return {
+        "enabled": True,
+        "private_key": private_key,
+        "public_key_pem": public_key_pem
+    }
+
+
+AI_CRYPTO_STATE = build_ai_crypto_state()
+
+
+def get_ai_crypto_public_config():
+    """返回前端可用的 AI 参数加密配置。"""
+    return {
+        "enabled": AI_CRYPTO_STATE["enabled"],
+        "version": AI_CONFIG_CRYPTO_VERSION,
+        "publicKeyPem": AI_CRYPTO_STATE.get("public_key_pem", "")
+    }
+
+
+def decode_base64_field(encoded_value, field_name):
+    """安全解码 Base64 字段。"""
+    try:
+        return base64.b64decode((encoded_value or "").encode("utf-8"))
+    except Exception as exc:
+        raise AIConfigCryptoError(f"AI 加密参数字段无效: {field_name}") from exc
+
+
+def decrypt_ai_config_payload(encrypted_payload):
+    """解密前端提交的 AI 配置。"""
+    if not encrypted_payload:
+        return {}
+
+    if not AI_CRYPTO_STATE["enabled"]:
+        raise AIConfigCryptoError("服务端未启用 AI 参数加密，请安装 cryptography 并重启服务")
+
+    version = (encrypted_payload.get("version") or "").strip()
+    if version != AI_CONFIG_CRYPTO_VERSION:
+        raise AIConfigCryptoError("AI 加密参数版本不匹配")
+
+    encrypted_key = decode_base64_field(encrypted_payload.get("encrypted_key"), "encrypted_key")
+    iv = decode_base64_field(encrypted_payload.get("iv"), "iv")
+    ciphertext = decode_base64_field(encrypted_payload.get("ciphertext"), "ciphertext")
+
+    try:
+        aes_key = AI_CRYPTO_STATE["private_key"].decrypt(
+            encrypted_key,
+            padding.OAEP(
+                mgf=padding.MGF1(algorithm=hashes.SHA256()),
+                algorithm=hashes.SHA256(),
+                label=None
+            )
+        )
+        plaintext = AESGCM(aes_key).decrypt(iv, ciphertext, None)
+        config = json.loads(plaintext.decode("utf-8"))
+    except Exception as exc:
+        raise AIConfigCryptoError("AI 加密参数解密失败") from exc
+
+    if not isinstance(config, dict):
+        raise AIConfigCryptoError("AI 加密参数格式错误")
+
+    return config
+
+
+def extract_ai_config_from_request(data):
+    """从请求体中提取 AI 配置，优先解密密文。"""
+    encrypted_payload = data.get("ai_config_encrypted")
+    if encrypted_payload is not None:
+        if not isinstance(encrypted_payload, dict):
+            raise AIConfigCryptoError("AI 加密参数格式错误")
+        return decrypt_ai_config_payload(encrypted_payload)
+
+    ai_config = data.get("ai_config") or {}
+    if not isinstance(ai_config, dict):
+        raise AIConfigCryptoError("AI 配置格式错误")
+    return ai_config
+
+
+def get_ai_request_data():
+    """统一读取 AI 接口请求，并处理 AI 配置加解密。"""
+    data = request.get_json(silent=True) or {}
+    if not isinstance(data, dict):
+        raise AIConfigCryptoError("请求体必须是 JSON 对象")
+    payload = dict(data)
+    payload["ai_config"] = extract_ai_config_from_request(payload)
+    return payload
 
 # 主题配置 - 丰富的个性化设置
 THEMES = {
@@ -2108,7 +2237,8 @@ def index():
                                   'base_url': os.getenv("OPENAI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta/openai"),
                                   'model': os.getenv("OPENAI_IMAGE_TOOL_MODEL", "gemini-2.5-flash-image")
                               }
-                          })
+                          },
+                          ai_crypto=get_ai_crypto_public_config())
 
 
 @app.route('/share/<share_id>')
@@ -2307,7 +2437,7 @@ def api_wechat_draft():
 def api_ai_title_suggestions():
     """AI 标题建议。"""
     try:
-        data = request.get_json() or {}
+        data = get_ai_request_data()
         md_text = data.get('markdown', '')
         focus_prompt = data.get('focus_prompt', '')
         ai_config = data.get('ai_config') or {}
@@ -2322,6 +2452,11 @@ def api_ai_title_suggestions():
             'success': True,
             'suggestions': suggestions
         })
+    except AIConfigCryptoError as exc:
+        return jsonify({
+            'success': False,
+            'error': str(exc)
+        }), 400
     except Exception as e:
         return jsonify({
             'success': False,
@@ -2333,7 +2468,7 @@ def api_ai_title_suggestions():
 def api_ai_summary():
     """AI 文章摘要。"""
     try:
-        data = request.get_json() or {}
+        data = get_ai_request_data()
         md_text = data.get('markdown', '')
         focus_prompt = data.get('focus_prompt', '')
         ai_config = data.get('ai_config') or {}
@@ -2345,6 +2480,11 @@ def api_ai_summary():
             'success': True,
             'summary': summary
         })
+    except AIConfigCryptoError as exc:
+        return jsonify({
+            'success': False,
+            'error': str(exc)
+        }), 400
     except Exception as e:
         return jsonify({
             'success': False,
@@ -2356,7 +2496,7 @@ def api_ai_summary():
 def api_ai_generate_image():
     """AI 文章配图。"""
     try:
-        data = request.get_json() or {}
+        data = get_ai_request_data()
         md_text = data.get('markdown', '')
         focus_prompt = data.get('focus_prompt', '')
         ai_config = data.get('ai_config') or {}
@@ -2369,6 +2509,11 @@ def api_ai_generate_image():
             'image_data_url': result['image_data_url'],
             'revised_prompt': result.get('revised_prompt', '')
         })
+    except AIConfigCryptoError as exc:
+        return jsonify({
+            'success': False,
+            'error': str(exc)
+        }), 400
     except Exception as e:
         return jsonify({
             'success': False,

@@ -6,3 +6,4 @@ matplotlib>=3.5.0
 qrcode[pil]>=7.4.2
 Pillow>=10.0.0
 google-genai>=1.30.0
+cryptography>=44.0.0

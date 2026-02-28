@@ -48,6 +48,7 @@ class MD2HTML {
         this.editorLineOffsets = [0];
         this.selectionSyncFrame = null;
         this.editorDragSelection = null;
+        this.aiCryptoPublicKeyPromise = null;
         this.init();
     }
 
@@ -1870,6 +1871,7 @@ ${html}
     }
 
     async callAIEndpoint(path, body) {
+        const aiPayload = await this.buildAIConfigTransportPayload();
         const response = await fetch(path, {
             method: 'POST',
             headers: {
@@ -1877,7 +1879,7 @@ ${html}
             },
             body: JSON.stringify({
                 ...body,
-                ai_config: this.getAIConfigPayload()
+                ...aiPayload
             })
         });
 
@@ -1886,6 +1888,75 @@ ${html}
             throw new Error(data.error || 'AI 请求失败');
         }
         return data;
+    }
+
+    async buildAIConfigTransportPayload() {
+        const aiConfig = this.getAIConfigPayload();
+        if (!CONFIG.aiCrypto?.enabled) {
+            return { ai_config: aiConfig };
+        }
+
+        if (!window.crypto?.subtle || !CONFIG.aiCrypto?.publicKeyPem) {
+            throw new Error('当前环境不支持 AI 参数加密，请升级浏览器或检查服务端配置');
+        }
+
+        return {
+            ai_config_encrypted: await this.encryptAIConfigPayload(aiConfig)
+        };
+    }
+
+    async encryptAIConfigPayload(aiConfig) {
+        const publicKey = await this.getAICryptoPublicKey();
+        const symmetricKey = await window.crypto.subtle.generateKey(
+            {
+                name: 'AES-GCM',
+                length: 256
+            },
+            true,
+            ['encrypt']
+        );
+        const iv = window.crypto.getRandomValues(new Uint8Array(12));
+        const plaintext = new TextEncoder().encode(JSON.stringify(aiConfig));
+        const ciphertext = await window.crypto.subtle.encrypt(
+            {
+                name: 'AES-GCM',
+                iv
+            },
+            symmetricKey,
+            plaintext
+        );
+        const rawSymmetricKey = await window.crypto.subtle.exportKey('raw', symmetricKey);
+        const encryptedKey = await window.crypto.subtle.encrypt(
+            {
+                name: 'RSA-OAEP'
+            },
+            publicKey,
+            rawSymmetricKey
+        );
+
+        return {
+            version: CONFIG.aiCrypto.version,
+            encrypted_key: this.encodeArrayBufferBase64(encryptedKey),
+            iv: this.encodeArrayBufferBase64(iv),
+            ciphertext: this.encodeArrayBufferBase64(ciphertext)
+        };
+    }
+
+    async getAICryptoPublicKey() {
+        if (!this.aiCryptoPublicKeyPromise) {
+            this.aiCryptoPublicKeyPromise = window.crypto.subtle.importKey(
+                'spki',
+                this.decodePemToArrayBuffer(CONFIG.aiCrypto.publicKeyPem),
+                {
+                    name: 'RSA-OAEP',
+                    hash: 'SHA-256'
+                },
+                false,
+                ['encrypt']
+            );
+        }
+
+        return this.aiCryptoPublicKeyPromise;
     }
 
     async runAIAction(button, busyText, capability, action) {
@@ -2472,6 +2543,26 @@ flowchart LR
         const binary = window.atob(base64String);
         const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
         return new TextDecoder().decode(bytes);
+    }
+
+    decodePemToArrayBuffer(pemText) {
+        const base64 = (pemText || '')
+            .replace(/-----BEGIN PUBLIC KEY-----/g, '')
+            .replace(/-----END PUBLIC KEY-----/g, '')
+            .replace(/\s+/g, '');
+        const binary = window.atob(base64);
+        return Uint8Array.from(binary, (char) => char.charCodeAt(0)).buffer;
+    }
+
+    encodeArrayBufferBase64(buffer) {
+        const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
+        let binary = '';
+
+        bytes.forEach((byte) => {
+            binary += String.fromCharCode(byte);
+        });
+
+        return window.btoa(binary);
     }
 
     escapeHTML(value) {
