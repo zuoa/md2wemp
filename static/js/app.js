@@ -124,6 +124,9 @@ class MD2WE {
         this.wechatAppSecretInput = document.getElementById('wechatAppSecretInput');
         this.wechatAuthorInput = document.getElementById('wechatAuthorInput');
         this.wechatSourceUrlInput = document.getElementById('wechatSourceUrlInput');
+        this.wechatHeaderTemplate = document.getElementById('wechatHeaderTemplate');
+        this.wechatFooterTemplate = document.getElementById('wechatFooterTemplate');
+        this.wechatQrCodeUrl = document.getElementById('wechatQrCodeUrl');
         this.wechatDraftProfileSelect = document.getElementById('wechatDraftProfileSelect');
         this.manageWechatProfilesBtn = document.getElementById('manageWechatProfilesBtn');
         this.wechatProfileSummary = document.getElementById('wechatProfileSummary');
@@ -1532,7 +1535,10 @@ ${html}
             app_key: appKey,
             app_secret: appSecret,
             author: this.wechatAuthorInput.value.trim(),
-            source_url: this.wechatSourceUrlInput.value.trim()
+            source_url: this.wechatSourceUrlInput.value.trim(),
+            header_template: this.wechatHeaderTemplate?.value.trim() || '',
+            footer_template: this.wechatFooterTemplate?.value.trim() || '',
+            qr_code_url: this.wechatQrCodeUrl?.value.trim() || ''
         }, profiles.length);
 
         const nextProfiles = profiles.filter((profile) => profile.id !== profileId);
@@ -1791,7 +1797,10 @@ ${html}
                         digest: this.wechatDigestInput.value.trim(),
                         author: this.wechatAuthorInput.value.trim(),
                         content_source_url: this.wechatSourceUrlInput.value.trim(),
-                        cover_image: this.wechatCoverImageDataUrl
+                        cover_image: this.wechatCoverImageDataUrl,
+                        header_template: this.wechatHeaderTemplate?.value.trim() || '',
+                        footer_template: this.wechatFooterTemplate?.value.trim() || '',
+                        qr_code_url: this.wechatQrCodeUrl?.value.trim() || ''
                     }
                 })
             });
@@ -2547,6 +2556,15 @@ gantt
         this.wechatAppSecretInput.value = profile?.app_secret || '';
         this.wechatAuthorInput.value = profile?.author || '';
         this.wechatSourceUrlInput.value = profile?.source_url || '';
+        if (this.wechatHeaderTemplate) {
+            this.wechatHeaderTemplate.value = profile?.header_template || '';
+        }
+        if (this.wechatFooterTemplate) {
+            this.wechatFooterTemplate.value = profile?.footer_template || '';
+        }
+        if (this.wechatQrCodeUrl) {
+            this.wechatQrCodeUrl.value = profile?.qr_code_url || '';
+        }
     }
 
     populateWechatDraftProfile() {

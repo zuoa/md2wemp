@@ -399,6 +399,19 @@
                         <label class="field-label" for="wechatSourceUrlInput">原文链接（可选）</label>
                         <input id="wechatSourceUrlInput" class="text-field" type="url" placeholder="https://example.com/article">
 
+                        <div class="settings-divider"></div>
+                        <p class="settings-section-title">模板配置（可选）</p>
+                        <p class="settings-hint">在正文前后插入自定义内容，支持占位符：{word_count}、{read_time}、{title}、{author}</p>
+                        
+                        <label class="field-label" for="wechatHeaderTemplate">正文前模板</label>
+                        <textarea id="wechatHeaderTemplate" class="text-field" rows="2" placeholder="<p>📖 本文约 {word_count} 字，阅读约 {read_time} 分钟</p>"></textarea>
+
+                        <label class="field-label" for="wechatFooterTemplate">正文后模板</label>
+                        <textarea id="wechatFooterTemplate" class="text-field" rows="3" placeholder="<div style=&quot;text-align:center;&quot;><p>扫码关注</p>{qr_code}</div>"></textarea>
+
+                        <label class="field-label" for="wechatQrCodeUrl">引流二维码图片地址</label>
+                        <input id="wechatQrCodeUrl" class="text-field" type="url" placeholder="https://example.com/qrcode.jpg">
+
                         <div class="wechat-config-actions">
                             <button class="btn btn-outline" id="saveWechatConfigBtn" type="button">保存当前账号</button>
                             <button class="btn btn-outline" id="resetWechatConfigBtn" type="button">删除当前账号</button>

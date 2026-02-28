@@ -1334,17 +1334,117 @@ def coerce_bool_flag(value, default):
     return 1 if str(value).strip().lower() in {"1", "true", "yes", "on"} else 0
 
 
+def calculate_read_stats(md_text):
+    """计算文章字数和阅读时间。
+    
+    返回:
+        dict: 包含 chinese_count(中文字数), total_count(总字符数), read_time(阅读分钟数)
+    """
+    plain_text = extract_plain_text_from_markdown(md_text)
+    chinese_count = len(re.findall(r'[\u4e00-\u9fff]', plain_text))
+    total_count = len(plain_text)
+    # 假设平均阅读速度：每分钟 300 中文字符或 500 英文单词
+    # 简单估算：总字符数 / 200 作为阅读时间（分钟）
+    read_time = max(1, round(total_count / 200))
+    return {
+        "chinese_count": chinese_count,
+        "total_count": total_count,
+        "read_time": read_time
+    }
+
+
+def apply_template_placeholders(template_html, meta, stats, default_author):
+    """应用模板占位符。
+    
+    支持的占位符:
+        {word_count} - 中文字数
+        {total_chars} - 总字符数
+        {read_time} - 阅读时间（分钟）
+        {title} - 文章标题
+        {author} - 作者
+        {qr_code} - 引流二维码图片（需要通过 qr_code_url 参数传入）
+    
+    Args:
+        template_html: 模板 HTML 字符串
+        meta: 文章元数据 dict
+        stats: 字数统计 dict
+        default_author: 默认作者名
+    
+    Returns:
+        替换占位符后的 HTML 字符串
+    """
+    if not template_html:
+        return ""
+    
+    title = meta.get("title") or ""
+    author = meta.get("author") or default_author
+    
+    replacements = {
+        "{word_count}": str(stats.get("chinese_count", 0)),
+        "{total_chars}": str(stats.get("total_count", 0)),
+        "{read_time}": str(stats.get("read_time", 1)),
+        "{title}": title,
+        "{author}": author,
+    }
+    
+    result = template_html
+    for placeholder, value in replacements.items():
+        result = result.replace(placeholder, value)
+    
+    return result
+
+
 def prepare_wechat_article_payload(md_text, theme, code_theme, font_size, background, access_token, meta=None):
-    """组装公众号草稿文章数据。"""
+    """组装公众号草稿文章数据。
+    
+    新增 meta 参数:
+        header_template: 正文前插入的 HTML 模板
+        footer_template: 正文后插入的 HTML 模板
+        qr_code_url: 引流二维码图片地址（可选）
+    
+    模板占位符:
+        {word_count} - 中文字数
+        {total_chars} - 总字符数  
+        {read_time} - 阅读时间（分钟）
+        {title} - 文章标题
+        {author} - 作者
+    """
     meta = meta or {}
     title = (meta.get("title") or find_first_heading(md_text) or "未命名文章").strip()
     digest = (meta.get("digest") or extract_plain_text_from_markdown(md_text)[:120]).strip()
     author = (meta.get("author") or "").strip()
     content_source_url = (meta.get("content_source_url") or "").strip()
 
+    # 计算文章统计信息
+    stats = calculate_read_stats(md_text)
+
     html_content = process_markdown(md_text, theme, code_theme, font_size, background)
     html_content = replace_mermaid_blocks_for_wechat(html_content)
     html_content, uploaded_image_count = replace_content_images_with_wechat_urls(html_content, access_token)
+
+    # 插入正文前后模板
+    header_template = (meta.get("header_template") or "").strip()
+    footer_template = (meta.get("footer_template") or "").strip()
+    qr_code_url = (meta.get("qr_code_url") or "").strip()
+    
+    # 处理 header 模板
+    if header_template:
+        header_html = apply_template_placeholders(header_template, meta, stats, author)
+        if header_html:
+            # 插入到内容最开始
+            html_content = header_html + html_content
+    
+    # 处理 footer 模板
+    if footer_template:
+        footer_html = apply_template_placeholders(footer_template, meta, stats, author)
+        # 替换 qr_code 占位符（特殊处理图片）
+        if qr_code_url and "{qr_code}" in footer_html:
+            qr_img = f'<img src="{qr_code_url}" style="max-width: 200px; display: block; margin: 16px auto;" alt="扫码关注">'
+            footer_html = footer_html.replace("{qr_code}", qr_img)
+        footer_html = footer_html.replace("{qr_code}", "")
+        if footer_html:
+            # 插入到内容最末尾（但在 </section> 之前）
+            html_content = html_content.replace("</section>", f"{footer_html}</section>")
 
     cover_source = (
         (meta.get("cover_image") or "").strip()
