@@ -2552,6 +2552,7 @@ def share_article(share_id):
     published_at = normalize_iso_timestamp(payload.get("created_at"))
     og_image_url = get_default_og_image_url()
     canonical_url = build_public_url("share_article", share_id=share_id)
+    page_qr_svg = create_share_qr_svg(canonical_url)
 
     return render_template(
         "share.html",
@@ -2564,6 +2565,7 @@ def share_article(share_id):
         code_theme_name=CODE_THEMES[code_theme]["name"],
         site_name=SITE_NAME,
         canonical_url=canonical_url,
+        page_qr_svg=page_qr_svg,
         published_at=published_at,
         og_image_url=og_image_url,
         structured_data=build_share_structured_data(

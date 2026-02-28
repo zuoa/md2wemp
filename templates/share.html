@@ -48,10 +48,19 @@
                 {{ article_html | safe }}
             </div>
         </main>
+        <footer class="share-footer">
+            <div class="share-footer-qr">
+                <div id="sharePageQr" class="share-footer-qr-code" aria-label="当前页面二维码">二维码生成中...</div>
+                <p class="share-footer-caption">扫码打开当前链接</p>
+            </div>
+            <div class="share-footer-meta"><a href="{{ url_for('index') }}">Powered by {{ site_name }}</a></div>
+        </footer>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
     <script>
+        window.__SHARE_PAGE_QR_SVG__ = {{ (page_qr_svg or "") | tojson }};
+
         (async () => {
             const nodes = Array.from(document.querySelectorAll('.md2-mermaid[data-mermaid]'));
             if (!nodes.length || !window.mermaid) {
@@ -76,6 +85,20 @@
                     node.innerHTML = '<div class="mermaid-error">Mermaid 渲染失败，请检查图表语法。</div>';
                 }
             }
+        })();
+
+        (() => {
+            const mountNode = document.getElementById('sharePageQr');
+            if (!mountNode) {
+                return;
+            }
+
+            if (!window.__SHARE_PAGE_QR_SVG__) {
+                mountNode.textContent = '二维码不可用';
+                return;
+            }
+
+            mountNode.innerHTML = window.__SHARE_PAGE_QR_SVG__;
         })();
     </script>
 </body>
