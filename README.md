@@ -55,18 +55,30 @@ export OPENAI_IMAGE_TOOL_MODEL=gemini-2.5-flash-image
 
 页面配置优先于服务端环境变量，且仅保存在当前浏览器本地。
 
-如果要避免浏览器到服务端传输时直接暴露 `API Key`，可以启用 AI 参数传输加密：
+如果要避免浏览器到服务端传输时直接暴露 `API Key`，服务端现在会在首次启动时自动生成并持久化 AI 参数传输加密私钥，默认写到：
+
+```bash
+instance/ai_config_private_key.pem
+```
+
+也可以显式指定环境变量：
+
+```bash
+export AI_CONFIG_PRIVATE_KEY_PEM='-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n'
+```
+
+如果你想预先生成一份可复制的环境变量值，也可以手动执行：
 
 ```bash
 python3 scripts/generate_ai_crypto_key.py
-export AI_CONFIG_PRIVATE_KEY_PEM='-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n'
 ```
 
 说明：
 
-- 后端启动时会读取 `AI_CONFIG_PRIVATE_KEY_PEM`，并自动向前端下发对应公钥
+- 后端启动时优先读取 `AI_CONFIG_PRIVATE_KEY_PEM`
+- 如果没有配置环境变量，会自动读取或创建 `instance/ai_config_private_key.pem`
+- 前端会自动拿到对应公钥，并加密 `AI 配置`
 - 前端会用公钥加密 `AI 配置`，后端再用私钥解密后发起真实 AI 请求
-- 如果未设置 `AI_CONFIG_PRIVATE_KEY_PEM`，服务端会临时生成一把密钥；重启后公钥会变化
 - 该加密只保护浏览器到服务端这一跳，不会加密浏览器本地 `localStorage`
 
 说明：

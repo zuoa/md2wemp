@@ -72,6 +72,7 @@ except ImportError:
 app = Flask(__name__)
 CORS(app)
 SHARE_STORAGE_DIR = Path(app.root_path) / "data" / "shares"
+AI_CRYPTO_KEY_PATH = Path(app.instance_path) / "ai_config_private_key.pem"
 WECHAT_API_BASE = "https://api.weixin.qq.com/cgi-bin"
 WECHAT_INLINE_IMAGE_MAX_BYTES = 1024 * 1024
 WECHAT_THUMB_IMAGE_MAX_BYTES = 64 * 1024
@@ -87,6 +88,30 @@ def normalize_pem_text(raw_value):
     return (raw_value or "").strip().replace("\\n", "\n")
 
 
+def load_or_create_ai_crypto_private_key():
+    """加载或自动生成用于 AI 参数传输加密的私钥。"""
+    private_key_pem = normalize_pem_text(os.getenv("AI_CONFIG_PRIVATE_KEY_PEM", ""))
+    if private_key_pem:
+        return serialization.load_pem_private_key(private_key_pem.encode("utf-8"), password=None)
+
+    if AI_CRYPTO_KEY_PATH.exists():
+        return serialization.load_pem_private_key(AI_CRYPTO_KEY_PATH.read_bytes(), password=None)
+
+    AI_CRYPTO_KEY_PATH.parent.mkdir(parents=True, exist_ok=True)
+    private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    pem_bytes = private_key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.NoEncryption()
+    )
+    AI_CRYPTO_KEY_PATH.write_bytes(pem_bytes)
+    try:
+        os.chmod(AI_CRYPTO_KEY_PATH, 0o600)
+    except OSError:
+        pass
+    return private_key
+
+
 def build_ai_crypto_state():
     """初始化 AI 参数传输加密所需的密钥。"""
     if not CRYPTOGRAPHY_AVAILABLE:
@@ -95,11 +120,7 @@ def build_ai_crypto_state():
             "public_key_pem": ""
         }
 
-    private_key_pem = normalize_pem_text(os.getenv("AI_CONFIG_PRIVATE_KEY_PEM", ""))
-    if private_key_pem:
-        private_key = serialization.load_pem_private_key(private_key_pem.encode("utf-8"), password=None)
-    else:
-        private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    private_key = load_or_create_ai_crypto_private_key()
 
     public_key_pem = private_key.public_key().public_bytes(
         encoding=serialization.Encoding.PEM,
