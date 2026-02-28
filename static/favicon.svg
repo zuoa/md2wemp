@@ -1,0 +1,22 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="plate" x1="72" y1="56" x2="440" y2="456" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#08111f"/>
+      <stop offset="0.52" stop-color="#143a7a"/>
+      <stop offset="1" stop-color="#19c2c8"/>
+    </linearGradient>
+    <linearGradient id="stroke" x1="108" y1="88" x2="412" y2="424" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#E9FBFF"/>
+      <stop offset="1" stop-color="#C5F4FF"/>
+    </linearGradient>
+  </defs>
+  <rect x="36" y="36" width="440" height="440" rx="124" fill="url(#plate)"/>
+  <rect x="40" y="40" width="432" height="432" rx="120" stroke="rgba(255,255,255,0.18)" stroke-width="8"/>
+  <path d="M152 344V168L216 268L280 168V344" stroke="url(#stroke)" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M322 168H356C394.66 168 426 199.34 426 238V274C426 312.66 394.66 344 356 344H322V168Z" stroke="url(#stroke)" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M136 116H376" stroke="rgba(255,255,255,0.28)" stroke-width="12" stroke-linecap="round"/>
+  <circle cx="160" cy="116" r="10" fill="#6EE7F9"/>
+  <path d="M144 396H368" stroke="rgba(255,255,255,0.14)" stroke-width="10" stroke-linecap="round"/>
+  <path d="M350 108L388 72" stroke="#6EE7F9" stroke-width="12" stroke-linecap="round"/>
+  <path d="M364 164H412" stroke="#6EE7F9" stroke-width="12" stroke-linecap="round"/>
+</svg>
