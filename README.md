@@ -61,10 +61,11 @@ curl http://localhost:5566/api/health
 mkdir -p data/shares instance
 ```
 
-直接构建并启动：
+先拉取线上镜像，再启动：
 
 ```bash
-docker compose up -d --build
+docker compose pull
+docker compose up -d
 ```
 
 查看日志：
@@ -109,7 +110,7 @@ http://localhost:5566
 发布条件：
 
 - push 到默认分支时，发布 `latest`、`edge`、分支名和 `sha-*` 标签
-- push tag 时，发布对应的 tag 名和 `sha-*` 标签
+- push tag 时，发布 `latest`、对应的 tag 名和 `sha-*` 标签
 - pull request 不发布镜像
 
 镜像地址格式：
@@ -118,16 +119,16 @@ http://localhost:5566
 ghcr.io/<owner>/<repo>
 ```
 
-例如仓库是 `yujian/md2html`，镜像地址就是：
+当前发布包名是：
 
 ```text
-ghcr.io/yujian/md2html
+ghcr.io/zuoa/md2wemp
 ```
 
 拉取示例：
 
 ```bash
-docker pull ghcr.io/<owner>/<repo>:latest
+docker pull ghcr.io/zuoa/md2wemp:latest
 ```
 
 注意：
@@ -137,10 +138,10 @@ docker pull ghcr.io/<owner>/<repo>:latest
 
 ### 方式二：直接使用 Docker
 
-构建镜像：
+直接拉取线上镜像：
 
 ```bash
-docker build -t md2html:latest .
+docker pull ghcr.io/zuoa/md2wemp:latest
 ```
 
 启动容器：
@@ -151,7 +152,17 @@ docker run -d \
   -p 5566:5566 \
   -v "$(pwd)/data:/app/data" \
   -v "$(pwd)/instance:/app/instance" \
-  md2html:latest
+  -e SITE_URL=https://md2we.com \
+  -e DEFAULT_OG_IMAGE_URL=https://md2we.com/static/og-cover.png \
+  ghcr.io/zuoa/md2wemp:latest
+```
+
+### 可选：本地构建镜像
+
+如果你要基于当前工作区代码自行构建，而不是使用 GHCR 上的正式镜像：
+
+```bash
+docker build -t md2html:local .
 ```
 
 ## 环境变量
@@ -223,7 +234,7 @@ python3 scripts/generate_ai_crypto_key.py
 
 ### 可选：Docker Compose 环境变量写法
 
-如果你确实想给服务端预置默认 AI 配置，可以在项目根目录放一个 `.env` 文件，再执行 `docker compose up -d --build`：
+如果你确实想给服务端预置默认 AI 配置，可以在项目根目录放一个 `.env` 文件，再执行 `docker compose pull && docker compose up -d`：
 
 ```bash
 OPENAI_API_KEY=your_key_here

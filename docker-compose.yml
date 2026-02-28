@@ -1,8 +1,7 @@
 services:
   md2html:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: ghcr.io/zuoa/md2wemp:latest
+    pull_policy: always
     container_name: md2html
     restart: unless-stopped
     ports:
@@ -10,6 +9,11 @@ services:
     environment:
       SITE_URL: https://md2we.com
       DEFAULT_OG_IMAGE_URL: https://md2we.com/static/og-cover.png
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     volumes:
       - ./data:/app/data
       - ./instance:/app/instance
