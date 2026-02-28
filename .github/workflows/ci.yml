@@ -11,7 +11,7 @@ concurrency:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: zuoa/md2wemp
+  IMAGE_NAME: zuoa/md2we
 
 jobs:
   python-check:
