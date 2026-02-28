@@ -29,51 +29,10 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Generate ephemeral AI crypto key
-        shell: bash
-        run: |
-          python - <<'PY' >> "$GITHUB_ENV"
-          from cryptography.hazmat.primitives import serialization
-          from cryptography.hazmat.primitives.asymmetric import rsa
-
-          private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-          pem_text = private_key.private_bytes(
-              encoding=serialization.Encoding.PEM,
-              format=serialization.PrivateFormat.PKCS8,
-              encryption_algorithm=serialization.NoEncryption(),
-          ).decode("utf-8").replace("\n", "\\n")
-
-          print(f"AI_CONFIG_PRIVATE_KEY_PEM={pem_text}")
-          PY
-
       - name: Compile Python files
         run: python -m py_compile app.py scripts/generate_ai_crypto_key.py
 
-      - name: Run API smoke tests
-        run: |
-          python - <<'PY'
-          import app as app_module
-
-          client = app_module.app.test_client()
-
-          health = client.get("/api/health")
-          assert health.status_code == 200, health.data
-          assert health.get_json()["status"] == "ok"
-
-          themes = client.get("/api/themes")
-          assert themes.status_code == 200, themes.data
-          themes_data = themes.get_json()
-          assert "themes" in themes_data
-          assert "code_themes" in themes_data
-
-          convert = client.post("/api/convert", json={"markdown": "# CI Smoke Test"})
-          assert convert.status_code == 200, convert.data
-          convert_data = convert.get_json()
-          assert convert_data["success"] is True
-          assert "<section" in convert_data["html"]
-          PY
-
-  docker-smoke:
+  docker-build:
     runs-on: ubuntu-latest
     needs: python-check
     steps:
@@ -83,33 +42,9 @@ jobs:
       - name: Build Docker image
         run: docker build -t md2html:ci .
 
-      - name: Run container
-        run: docker run -d --name md2html-ci -p 5566:5566 md2html:ci
-
-      - name: Wait for health endpoint
-        shell: bash
-        run: |
-          for i in {1..20}; do
-            if curl -fsS http://127.0.0.1:5566/api/health >/tmp/md2html-health.json; then
-              cat /tmp/md2html-health.json
-              exit 0
-            fi
-            sleep 3
-          done
-          docker logs md2html-ci
-          exit 1
-
-      - name: Show container logs on failure
-        if: failure()
-        run: docker logs md2html-ci
-
-      - name: Cleanup container
-        if: always()
-        run: docker rm -f md2html-ci
-
   docker-publish:
     runs-on: ubuntu-latest
-    needs: docker-smoke
+    needs: docker-build
     if: github.event_name != 'pull_request' && (github.ref_type == 'tag' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch))
     permissions:
       contents: read

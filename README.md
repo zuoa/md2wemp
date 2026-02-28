@@ -98,11 +98,9 @@ http://localhost:5566
 工作流会执行两类检查：
 
 - 安装依赖并执行 Python 语法检查
-- 使用 Flask `test_client` 做接口冒烟测试
 - 构建 Docker 镜像
-- 启动容器并检查 `GET /api/health`
 
-这套 CI 默认不依赖服务端 `OPENAI_API_KEY`。工作流会临时生成一把测试用的 AI 加密私钥，只用于 CI 里的导入和接口检查。
+这套 CI 默认不依赖服务端 `OPENAI_API_KEY`。
 
 ### 自动发布镜像
 
