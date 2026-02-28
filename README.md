@@ -23,7 +23,7 @@
 ├── static/
 ├── templates/
 ├── scripts/
-├── data/shares/     # 分享页持久化数据
+├── data/shares/     # 分享页 JSON 与 AI 配图文件
 └── instance/        # AI 加密私钥等运行时文件
 ```
 
@@ -262,7 +262,7 @@ AI_CONFIG_PRIVATE_KEY_PEM=
 
 ## 持久化目录
 
-- `data/shares/`：保存分享页 JSON 数据
+- `data/shares/`：保存分享页 JSON 数据和 `images/` 配图文件
 - `instance/`：保存 AI 加密私钥等运行时文件
 
 如果使用 `docker-compose.yml`，这两个目录会自动挂载到容器内：
@@ -390,6 +390,16 @@ AI_CONFIG_PRIVATE_KEY_PEM=
 {
   "markdown": "# 一篇文章\n\n正文内容",
   "focus_prompt": "科技感、极简插画"
+}
+```
+
+返回示例：
+
+```json
+{
+  "success": true,
+  "image_url": "https://md2we.com/share/images/ai-20260228183000-ab12cd34ef.png",
+  "revised_prompt": "已根据文章内容调整画面重点"
 }
 ```
 

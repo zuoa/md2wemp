@@ -1745,7 +1745,7 @@ ${html}
                 markdown: this.editor.value,
                 focus_prompt: `用于微信公众号文章分享封面，构图完整，视觉克制，有传播感。${this.wechatCoverFocusInput.value.trim() ? ` ${this.wechatCoverFocusInput.value.trim()}` : ''}`
             });
-            this.wechatCoverImageDataUrl = data.image_data_url || '';
+            this.wechatCoverImageDataUrl = data.image_url || '';
             this.updateWechatCoverPreview();
             this.showToast('公众号封面已生成，可预览后决定是否保留', 'success');
         });
@@ -2105,7 +2105,7 @@ ${html}
             focus_prompt: this.imageFocusInput.value.trim()
         });
 
-        this.generatedImageDataUrl = data.image_data_url || '';
+        this.generatedImageDataUrl = data.image_url || '';
         this.generatedImagePrompt = data.revised_prompt || '';
 
         this.generatedImagePreview.src = this.generatedImageDataUrl;

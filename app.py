@@ -3,7 +3,7 @@ MD2WE - Markdown转微信公众号HTML工具
 支持丰富的主题和API调用
 """
 
-from flask import Flask, render_template, request, jsonify, abort, url_for
+from flask import Flask, render_template, request, jsonify, abort, url_for, send_from_directory
 from flask_cors import CORS
 import markdown
 from markdown.extensions.tables import TableExtension
@@ -164,6 +164,48 @@ def get_active_share_storage_dir():
         return _ACTIVE_SHARE_STORAGE_DIR
 
     raise OSError("没有可写的分享目录，请检查 SHARE_STORAGE_DIR 或挂载目录权限")
+
+
+def iter_share_image_dirs():
+    """返回分享图片目录候选列表。"""
+    seen_paths = set()
+
+    for share_dir in iter_share_storage_dirs():
+        image_dir = share_dir / "images"
+        resolved_candidate = image_dir.resolve(strict=False)
+        if resolved_candidate in seen_paths:
+            continue
+        seen_paths.add(resolved_candidate)
+        yield image_dir
+
+
+def get_active_share_image_dir():
+    """返回当前用于写入的分享图片目录。"""
+    image_dir = get_active_share_storage_dir() / "images"
+    image_dir.mkdir(parents=True, exist_ok=True)
+    return image_dir
+
+
+def guess_image_extension(mime_type):
+    """根据 MIME 类型推断图片扩展名。"""
+    mime_type = (mime_type or "").strip().lower()
+    if mime_type == "image/jpeg":
+        return ".jpg"
+    if mime_type == "image/webp":
+        return ".webp"
+    if mime_type == "image/gif":
+        return ".gif"
+    return ".png"
+
+
+def save_generated_image_bytes(image_bytes, mime_type):
+    """保存 AI 生成图片并返回文件名。"""
+    image_dir = get_active_share_image_dir()
+    extension = guess_image_extension(mime_type)
+    filename = f"ai-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:10]}{extension}"
+    image_path = image_dir / filename
+    image_path.write_bytes(image_bytes)
+    return filename
 
 
 def load_or_create_ai_crypto_private_key():
@@ -1737,8 +1779,10 @@ def generate_ai_image(md_text, focus_prompt="", ai_config=None):
             image_model,
             config["image"]["api_key"]
         )
+        image_bytes = base64.b64decode(image_base64)
+        filename = save_generated_image_bytes(image_bytes, mime_type)
         return {
-            "image_data_url": f"data:{mime_type};base64,{image_base64}",
+            "image_url": build_public_url("share_image_file", filename=filename),
             "revised_prompt": revised_prompt
         }
 
@@ -1751,8 +1795,10 @@ def generate_ai_image(md_text, focus_prompt="", ai_config=None):
     }
     response_data = openai_api_request("/images/generations", payload, timeout=180, ai_config=config, capability="image")
     image_base64, revised_prompt = extract_generated_image(response_data)
+    image_bytes = base64.b64decode(image_base64)
+    filename = save_generated_image_bytes(image_bytes, "image/png")
     return {
-        "image_data_url": f"data:image/png;base64,{image_base64}",
+        "image_url": build_public_url("share_image_file", filename=filename),
         "revised_prompt": revised_prompt
     }
 
@@ -2529,6 +2575,21 @@ def share_article(share_id):
     )
 
 
+@app.route('/share/images/<path:filename>')
+def share_image_file(filename):
+    """输出分享页相关的本地图片资源。"""
+    safe_name = os.path.basename(filename or "")
+    if safe_name != filename or not safe_name:
+        abort(404)
+
+    for image_dir in iter_share_image_dirs():
+        image_path = image_dir / safe_name
+        if image_path.exists() and image_path.is_file():
+            return send_from_directory(image_dir, safe_name, conditional=True)
+
+    abort(404)
+
+
 @app.route('/robots.txt')
 def robots_txt():
     """站点 robots 配置。"""
@@ -2621,7 +2682,7 @@ def api_share():
 
         ensure_share_storage_dir()
         share_id = uuid.uuid4().hex[:12]
-        share_url = url_for("share_article", share_id=share_id, _external=True)
+        share_url = build_public_url("share_article", share_id=share_id)
         payload = build_share_payload(
             md_text,
             theme,
@@ -2790,7 +2851,7 @@ def api_ai_generate_image():
         result = generate_ai_image(md_text, focus_prompt, ai_config=ai_config)
         return jsonify({
             'success': True,
-            'image_data_url': result['image_data_url'],
+            'image_url': result['image_url'],
             'revised_prompt': result.get('revised_prompt', '')
         })
     except AIConfigCryptoError as exc:
