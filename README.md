@@ -11,6 +11,7 @@
 - ⏱️ **增强统计** - 汉字数、英文词数、预计阅读时间、标题数、图片数、行数
 - 🖼️ **导出长图** - 将当前预览一键导出为 PNG 长图
 - 📋 **一键复制 / 下载 HTML** - 直接复制到微信公众号编辑器或导出 HTML
+- 📮 **一键推送公众号草稿** - 本地保存 `AppKey / AppSecret`，直接推送当前文章到微信公众号草稿箱
 - 💾 **自动保存** - 内容自动保存到本地存储
 
 ## 快速开始
@@ -42,7 +43,7 @@ export OPENAI_API_KEY=your_key_here
 ```bash
 export OPENAI_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai
 export OPENAI_TEXT_MODEL=gemini-2.5-flash
-export OPENAI_IMAGE_TOOL_MODEL=imagen-4.0-generate-001
+export OPENAI_IMAGE_TOOL_MODEL=gemini-2.5-flash-image
 ```
 
 也可以直接在网页的“创作助手 > AI 配置”中填写：
@@ -53,6 +54,30 @@ export OPENAI_IMAGE_TOOL_MODEL=imagen-4.0-generate-001
 - `API Key`
 
 页面配置优先于服务端环境变量，且仅保存在当前浏览器本地。
+
+说明：
+
+- 文本生成继续走 OpenAI-compatible Chat Completions 接口
+- 图片模型名以 `gemini` 开头时，后端会改用官方 Gemini SDK 原生接口生成图片
+- 此时图片 `Base URL` 会被忽略，只使用 `Model + API Key`
+
+### 推送到公众号草稿
+
+在预览区点击“推公众号”即可打开推送面板：
+
+- `AppKey / AppSecret`、作者、原文链接会保存在浏览器 `localStorage`
+- 可手动上传一张封面图，推送时优先使用
+- 标题默认取 Markdown 第一个 `# H1`
+- 摘要默认取正文前 120 个字符，可手动改写
+- 如果已配置 AI，可以在推送弹层里手动点击生成标题建议、摘要或封面，满意后再使用
+- 系统会自动上传正文中的图片到微信素材域名
+- 系统会自动将正文第一张图片作为封面图上传
+- 如果没上传封面且正文没有图片，后端会自动生成一张“纯背景 + 大标题”的默认封面
+
+注意：
+
+- 自动封面依赖 Pillow，已加入项目依赖
+- 如果接口返回 IP 白名单、权限或素材错误，页面会直接显示微信返回的错误信息
 
 ## API 接口
 
@@ -87,6 +112,33 @@ export OPENAI_IMAGE_TOOL_MODEL=imagen-4.0-generate-001
 **GET** `/api/themes`
 
 返回所有可用的主题、代码高亮、字体大小和背景配置，以及当前是否启用 AI。
+
+### 推送公众号草稿
+
+**POST** `/api/wechat/draft`
+
+请求体：
+
+```json
+{
+  "markdown": "# 一篇文章\n\n正文内容",
+  "theme": "default",
+  "code_theme": "github",
+  "font_size": "medium",
+  "background": "warm",
+  "wechat_config": {
+    "app_key": "wx1234567890abcdef",
+    "app_secret": "your_app_secret"
+  },
+  "meta": {
+    "title": "文章标题",
+    "digest": "文章摘要",
+    "author": "作者名",
+    "content_source_url": "https://example.com/article",
+    "cover_image": "data:image/png;base64,..."
+  }
+}
+```
 
 ### AI 标题建议
 

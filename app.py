@@ -17,6 +17,8 @@ import re
 import json
 import io
 import base64
+import mimetypes
+import html as html_lib
 import urllib.parse
 import urllib.request
 import ssl
@@ -35,9 +37,31 @@ except ImportError:
     SvgPathImage = None
     QR_CODE_AVAILABLE = False
 
+try:
+    from PIL import Image, ImageOps, ImageDraw, ImageFont
+    PIL_AVAILABLE = True
+except ImportError:
+    Image = None
+    ImageOps = None
+    ImageDraw = None
+    ImageFont = None
+    PIL_AVAILABLE = False
+
+try:
+    from google import genai as google_genai
+    from google.genai import types as google_genai_types
+    GOOGLE_GENAI_AVAILABLE = True
+except ImportError:
+    google_genai = None
+    google_genai_types = None
+    GOOGLE_GENAI_AVAILABLE = False
+
 app = Flask(__name__)
 CORS(app)
 SHARE_STORAGE_DIR = Path(app.root_path) / "data" / "shares"
+WECHAT_API_BASE = "https://api.weixin.qq.com/cgi-bin"
+WECHAT_INLINE_IMAGE_MAX_BYTES = 1024 * 1024
+WECHAT_THUMB_IMAGE_MAX_BYTES = 64 * 1024
 
 # 主题配置 - 丰富的个性化设置
 THEMES = {
@@ -331,7 +355,7 @@ def sanitize_ai_config(ai_config=None):
         "image": {
             "api_key": (image_config.get("api_key") or os.getenv("OPENAI_API_KEY", "")).strip(),
             "base_url": (image_config.get("base_url") or os.getenv("OPENAI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta/openai")).strip().rstrip("/"),
-            "model": (image_config.get("model") or os.getenv("OPENAI_IMAGE_TOOL_MODEL", "imagen-4.0-generate-001")).strip()
+            "model": (image_config.get("model") or os.getenv("OPENAI_IMAGE_TOOL_MODEL", "gemini-2.5-flash-image")).strip()
         }
     }
 
@@ -456,6 +480,512 @@ def build_share_payload(md_text, theme, code_theme, font_size, background, share
     }
 
 
+def guess_extension_from_mime(mime_type):
+    """根据 MIME 类型推断文件扩展名。"""
+    if not mime_type:
+        return ".jpg"
+    guessed = mimetypes.guess_extension(mime_type.split(";")[0].strip().lower())
+    if guessed == ".jpe":
+        return ".jpg"
+    return guessed or ".jpg"
+
+
+def decode_data_url(data_url):
+    """解析 data URL。"""
+    match = re.match(r"^data:([^;,]+)?(;base64)?,(.*)$", data_url, re.IGNORECASE | re.DOTALL)
+    if not match:
+        raise RuntimeError("不支持的 data URL 格式")
+
+    mime_type = (match.group(1) or "application/octet-stream").strip().lower()
+    payload = match.group(3) or ""
+    if match.group(2):
+        raw_bytes = base64.b64decode(payload)
+    else:
+        raw_bytes = urllib.parse.unquote_to_bytes(payload)
+
+    return raw_bytes, mime_type
+
+
+def resolve_local_resource_path(source):
+    """尝试将资源路径解析为本地文件。"""
+    if not source:
+        return None
+
+    candidates = []
+    source_path = Path(source)
+    if source_path.is_absolute():
+        candidates.append(source_path)
+    else:
+        candidates.append(Path.cwd() / source)
+        candidates.append(Path(app.root_path) / source)
+
+    if source.startswith("/"):
+        candidates.append(Path(app.root_path) / source.lstrip("/"))
+
+    for candidate in candidates:
+        try:
+            resolved = candidate.expanduser().resolve()
+        except OSError:
+            continue
+        if resolved.exists() and resolved.is_file():
+            return resolved
+
+    return None
+
+
+def fetch_binary_resource(source):
+    """获取图片字节内容，支持 data URL、远程 URL 和本地文件。"""
+    source = (source or "").strip()
+    if not source:
+        raise RuntimeError("图片地址为空")
+
+    if source.startswith("data:"):
+        raw_bytes, mime_type = decode_data_url(source)
+        return raw_bytes, mime_type, f"embedded{guess_extension_from_mime(mime_type)}"
+
+    if re.match(r"^https?://", source, re.IGNORECASE):
+        req = urllib.request.Request(source, headers={"User-Agent": "Mozilla/5.0"})
+        try:
+            with urllib.request.urlopen(req, timeout=30, context=ssl.create_default_context()) as response:
+                raw_bytes = response.read()
+                mime_type = (response.headers.get_content_type() or "").strip().lower()
+        except HTTPError as exc:
+            raise RuntimeError(f"下载远程图片失败：HTTP {exc.code}") from exc
+        except URLError as exc:
+            raise RuntimeError(f"下载远程图片失败：{exc.reason}") from exc
+
+        parsed = urllib.parse.urlparse(source)
+        filename = Path(urllib.parse.unquote(parsed.path)).name or f"remote{guess_extension_from_mime(mime_type)}"
+        return raw_bytes, mime_type, filename
+
+    local_path = resolve_local_resource_path(source)
+    if not local_path:
+        raise RuntimeError(f"无法读取图片资源：{source}")
+
+    mime_type = (mimetypes.guess_type(str(local_path))[0] or "application/octet-stream").lower()
+    return local_path.read_bytes(), mime_type, local_path.name
+
+
+def normalize_image_for_wechat(image_bytes, mime_type, filename, max_bytes, purpose_label):
+    """将图片压缩到微信公众号更容易接受的范围。"""
+    if not image_bytes:
+        raise RuntimeError(f"{purpose_label}为空，无法上传")
+
+    mime_type = (mime_type or "").split(";")[0].strip().lower()
+    if not PIL_AVAILABLE:
+        if mime_type in {"image/jpeg", "image/png"} and len(image_bytes) <= max_bytes:
+            return image_bytes, mime_type, filename
+        raise RuntimeError(f"{purpose_label}过大或格式不兼容，且当前环境未安装 Pillow 无法压缩")
+
+    try:
+        with Image.open(io.BytesIO(image_bytes)) as image:
+            image = ImageOps.exif_transpose(image)
+            if image.mode not in ("RGB", "L"):
+                rgba_image = image.convert("RGBA")
+                base = Image.new("RGB", image.size, "#ffffff")
+                base.paste(rgba_image, mask=rgba_image.getchannel("A"))
+                image = base
+            elif image.mode == "L":
+                image = image.convert("RGB")
+
+            resampling_attr = getattr(Image, "Resampling", Image)
+            resample_filter = getattr(resampling_attr, "LANCZOS", Image.LANCZOS)
+            max_side_candidates = (1600, 1280, 1080, 960, 840, 720, 640, 560, 480, 360)
+            quality_candidates = (88, 82, 76, 70, 64, 58, 52, 46, 40)
+
+            for max_side in max_side_candidates:
+                candidate = image.copy()
+                candidate.thumbnail((max_side, max_side), resample_filter)
+                for quality in quality_candidates:
+                    buffer = io.BytesIO()
+                    candidate.save(buffer, format="JPEG", quality=quality, optimize=True)
+                    optimized = buffer.getvalue()
+                    if len(optimized) <= max_bytes:
+                        safe_name = f"{Path(filename).stem or 'wechat-image'}.jpg"
+                        return optimized, "image/jpeg", safe_name
+    except Exception as exc:
+        raise RuntimeError(f"{purpose_label}处理失败：{exc}") from exc
+
+    raise RuntimeError(f"{purpose_label}压缩后仍超过限制，请换更小的图片后重试")
+
+
+def get_cover_font_candidates():
+    """返回一组可能存在的中英文字体路径。"""
+    return [
+        "/System/Library/Fonts/PingFang.ttc",
+        "/System/Library/Fonts/PingFang.ttc",
+        "/System/Library/Fonts/Hiragino Sans GB.ttc",
+        "/System/Library/Fonts/STHeiti Light.ttc",
+        "/System/Library/Fonts/Supplemental/Songti.ttc",
+        "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/opentype/noto/NotoSerifCJK-Regular.ttc",
+        "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "C:/Windows/Fonts/msyh.ttc",
+        "C:/Windows/Fonts/simhei.ttf"
+    ]
+
+
+def load_cover_font(size):
+    """加载可用字体，找不到时退回 Pillow 默认字体。"""
+    if not PIL_AVAILABLE:
+        raise RuntimeError("当前环境未安装 Pillow，无法自动生成封面")
+
+    for font_path in get_cover_font_candidates():
+        if Path(font_path).exists():
+            try:
+                return ImageFont.truetype(font_path, size=size)
+            except Exception:
+                continue
+    return ImageFont.load_default()
+
+
+def wrap_text_for_cover(text, font, max_width, max_lines=3):
+    """按像素宽度切分标题，适合封面排版。"""
+    if not text:
+        return ["未命名文章"]
+
+    lines = []
+    current = ""
+    for char in text.strip():
+        candidate = f"{current}{char}"
+        bbox = font.getbbox(candidate)
+        width = bbox[2] - bbox[0]
+        if current and width > max_width:
+            lines.append(current)
+            current = char
+        else:
+            current = candidate
+
+    if current:
+        lines.append(current)
+
+    if len(lines) <= max_lines:
+        return lines
+
+    clipped = lines[:max_lines]
+    last = clipped[-1]
+    while last:
+        candidate = f"{last}..."
+        bbox = font.getbbox(candidate)
+        if bbox[2] - bbox[0] <= max_width:
+            clipped[-1] = candidate
+            return clipped
+        last = last[:-1]
+
+    clipped[-1] = "..."
+    return clipped
+
+
+def simplify_title_for_cover(title, max_chars=22):
+    """将标题压缩成更适合封面的短标题。"""
+    clean = re.sub(r"\s+", " ", (title or "").strip())
+    clean = re.sub(r"[|｜丨｜:：,，;；、]+", " ", clean)
+    clean = re.sub(r"\s{2,}", " ", clean).strip()
+    if not clean:
+        return "未命名文章"
+    if len(clean) <= max_chars:
+        return clean
+    return f"{clean[:max_chars].rstrip()}..."
+
+
+def generate_default_cover_image(title, digest=""):
+    """生成可上传到公众号的默认封面图。"""
+    if not PIL_AVAILABLE:
+        raise RuntimeError("文章没有图片，且当前环境未安装 Pillow，无法自动生成封面")
+
+    width, height = 900, 500
+    canvas = Image.new("RGB", (width, height), "#0b1220")
+    draw = ImageDraw.Draw(canvas)
+
+    # 简单大气：纯背景 + 大标题。
+    for y in range(height):
+        ratio = y / max(height - 1, 1)
+        r = int(11 + (22 - 11) * ratio)
+        g = int(18 + (38 - 18) * ratio)
+        b = int(32 + (68 - 32) * ratio)
+        draw.line((0, y, width, y), fill=(r, g, b))
+
+    draw.ellipse((-120, -160, 360, 260), fill="#16315f")
+    draw.ellipse((width - 320, height - 250, width + 120, height + 120), fill="#10284d")
+    draw.rounded_rectangle((72, 72, width - 72, height - 72), radius=32, outline="#2a4571", width=2)
+
+    title_font = load_cover_font(76)
+    text_left = 108
+    text_width = width - text_left * 2
+    concise_title = simplify_title_for_cover(title)
+    title_lines = wrap_text_for_cover(concise_title, title_font, text_width, max_lines=2)
+
+    line_heights = []
+    for line in title_lines:
+        bbox = title_font.getbbox(line)
+        line_heights.append((bbox[3] - bbox[1]) + 18)
+    total_height = sum(line_heights) - 18 if line_heights else 0
+    current_top = int((height - total_height) / 2)
+
+    for index, line in enumerate(title_lines):
+        shadow_offset = 3
+        draw.text((text_left + shadow_offset, current_top + shadow_offset), line, font=title_font, fill="#09111d")
+        draw.text((text_left, current_top), line, font=title_font, fill="#f8fbff")
+        current_top += line_heights[index]
+
+    buffer = io.BytesIO()
+    canvas.save(buffer, format="JPEG", quality=78, optimize=True)
+    image_bytes = buffer.getvalue()
+    return image_bytes, "image/jpeg", "auto-cover.jpg"
+
+
+def build_multipart_body(fields=None, files=None):
+    """构造 multipart/form-data 请求体。"""
+    boundary = f"----MD2WE{uuid.uuid4().hex}"
+    body = bytearray()
+
+    for key, value in (fields or {}).items():
+        body.extend(f"--{boundary}\r\n".encode("utf-8"))
+        body.extend(f'Content-Disposition: form-data; name="{key}"\r\n\r\n'.encode("utf-8"))
+        body.extend(str(value).encode("utf-8"))
+        body.extend(b"\r\n")
+
+    for file_item in files or []:
+        field_name = file_item["field_name"]
+        filename = file_item["filename"]
+        content_type = file_item["content_type"]
+        content = file_item["content"]
+        body.extend(f"--{boundary}\r\n".encode("utf-8"))
+        body.extend(
+            f'Content-Disposition: form-data; name="{field_name}"; filename="{filename}"\r\n'.encode("utf-8")
+        )
+        body.extend(f"Content-Type: {content_type}\r\n\r\n".encode("utf-8"))
+        body.extend(content)
+        body.extend(b"\r\n")
+
+    body.extend(f"--{boundary}--\r\n".encode("utf-8"))
+    return bytes(body), boundary
+
+
+def wechat_api_request(url, method="GET", payload=None, headers=None):
+    """请求微信公众号接口并解析 JSON。"""
+    request_headers = headers.copy() if headers else {}
+    data = None
+    if payload is not None:
+        if isinstance(payload, (dict, list)):
+            data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+            request_headers.setdefault("Content-Type", "application/json")
+        else:
+            data = payload
+
+    req = urllib.request.Request(url, data=data, headers=request_headers, method=method.upper())
+    try:
+        with urllib.request.urlopen(req, timeout=60, context=ssl.create_default_context()) as response:
+            raw = response.read().decode("utf-8")
+    except HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="ignore")
+        raise RuntimeError(f"微信接口请求失败：HTTP {exc.code} {body}") from exc
+    except URLError as exc:
+        raise RuntimeError(f"微信接口网络请求失败：{exc.reason}") from exc
+
+    try:
+        response_data = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"微信接口返回了无法解析的响应：{raw[:200]}") from exc
+
+    errcode = response_data.get("errcode")
+    if errcode not in (None, 0):
+        errmsg = response_data.get("errmsg", "未知错误")
+        raise RuntimeError(f"微信接口返回错误：errcode={errcode}, errmsg={errmsg}")
+
+    return response_data
+
+
+def wechat_get_access_token(app_key, app_secret):
+    """使用 AppKey/AppSecret 获取公众号 access token。"""
+    url = (
+        f"{WECHAT_API_BASE}/token?"
+        f"grant_type=client_credential&appid={urllib.parse.quote(app_key)}&secret={urllib.parse.quote(app_secret)}"
+    )
+    response_data = wechat_api_request(url)
+    access_token = (response_data.get("access_token") or "").strip()
+    if not access_token:
+        raise RuntimeError("未获取到微信公众号 access_token")
+    return access_token
+
+
+def wechat_upload_article_image(access_token, image_bytes, filename, mime_type):
+    """上传正文图片到微信公众号素材域名。"""
+    body, boundary = build_multipart_body(files=[{
+        "field_name": "media",
+        "filename": filename,
+        "content_type": mime_type,
+        "content": image_bytes
+    }])
+    url = f"{WECHAT_API_BASE}/media/uploadimg?access_token={urllib.parse.quote(access_token)}"
+    response_data = wechat_api_request(
+        url,
+        method="POST",
+        payload=body,
+        headers={"Content-Type": f"multipart/form-data; boundary={boundary}"}
+    )
+    image_url = (response_data.get("url") or "").strip()
+    if not image_url:
+        raise RuntimeError("微信未返回正文图片地址")
+    return image_url
+
+
+def wechat_upload_thumb_image(access_token, image_bytes, filename, mime_type):
+    """上传封面图并返回 thumb_media_id。"""
+    body, boundary = build_multipart_body(files=[{
+        "field_name": "media",
+        "filename": filename,
+        "content_type": mime_type,
+        "content": image_bytes
+    }])
+    url = f"{WECHAT_API_BASE}/material/add_material?access_token={urllib.parse.quote(access_token)}&type=thumb"
+    response_data = wechat_api_request(
+        url,
+        method="POST",
+        payload=body,
+        headers={"Content-Type": f"multipart/form-data; boundary={boundary}"}
+    )
+    thumb_media_id = (response_data.get("media_id") or "").strip()
+    if not thumb_media_id:
+        raise RuntimeError("微信未返回封面 thumb_media_id")
+    return thumb_media_id
+
+
+def replace_mermaid_blocks_for_wechat(html_content):
+    """将前端 Mermaid 占位块替换为源码代码块，避免公众号正文出现“渲染中”。"""
+    pattern = re.compile(r'<div class="md2-mermaid" data-mermaid="([^"]+)"[^>]*>.*?</div></div>', re.DOTALL)
+
+    def repl(match):
+        try:
+            source = base64.b64decode(match.group(1)).decode("utf-8")
+        except Exception:
+            source = "Mermaid 图表源码解析失败"
+        escaped = html_lib.escape(source)
+        return (
+            '<pre style="margin: 16px 0; padding: 14px 16px; background: #f5f7fa; color: #1f2937; '
+            'border-radius: 8px; overflow-x: auto; white-space: pre-wrap; word-break: break-word;">'
+            f'<code>{escaped}</code></pre>'
+        )
+
+    return pattern.sub(repl, html_content)
+
+
+def replace_content_images_with_wechat_urls(html_content, access_token):
+    """上传正文中的图片到微信并替换为微信地址。"""
+    upload_cache = {}
+    pattern = re.compile(r'(<img\b[^>]*\bsrc=["\'])([^"\']+)(["\'][^>]*>)', re.IGNORECASE)
+
+    def repl(match):
+        source = match.group(2).strip()
+        if not source:
+            return match.group(0)
+        if "mmbiz.qpic.cn" in source or "mmbiz.qlogo.cn" in source:
+            return match.group(0)
+
+        if source not in upload_cache:
+            raw_bytes, mime_type, filename = fetch_binary_resource(source)
+            normalized_bytes, normalized_mime, normalized_name = normalize_image_for_wechat(
+                raw_bytes,
+                mime_type,
+                filename,
+                WECHAT_INLINE_IMAGE_MAX_BYTES,
+                "正文图片"
+            )
+            upload_cache[source] = wechat_upload_article_image(
+                access_token,
+                normalized_bytes,
+                normalized_name,
+                normalized_mime
+            )
+
+        return f"{match.group(1)}{upload_cache[source]}{match.group(3)}"
+
+    replaced_html = pattern.sub(repl, html_content)
+    return replaced_html, len(upload_cache)
+
+
+def extract_first_markdown_image_source(md_text):
+    """提取 Markdown 中第一张图片地址。"""
+    match = re.search(r'!\[[^\]]*\]\(([^)\s]+(?:\?[^)]*)?)', md_text)
+    if match:
+        return match.group(1).strip()
+    return ""
+
+
+def extract_first_html_image_source(html_content):
+    """提取 HTML 中第一张非公式图片地址。"""
+    pattern = re.compile(r'<img\b([^>]*?)\bsrc=["\']([^"\']+)["\']([^>]*)>', re.IGNORECASE)
+    for match in pattern.finditer(html_content):
+        attrs = f"{match.group(1)} {match.group(3)}".lower()
+        if 'alt="math"' in attrs or "alt='math'" in attrs:
+            continue
+        return match.group(2).strip()
+    return ""
+
+
+def coerce_bool_flag(value, default):
+    """将前端传来的布尔值规范成 0/1。"""
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return 1 if value else 0
+    return 1 if str(value).strip().lower() in {"1", "true", "yes", "on"} else 0
+
+
+def prepare_wechat_article_payload(md_text, theme, code_theme, font_size, background, access_token, meta=None):
+    """组装公众号草稿文章数据。"""
+    meta = meta or {}
+    title = (meta.get("title") or find_first_heading(md_text) or "未命名文章").strip()
+    digest = (meta.get("digest") or extract_plain_text_from_markdown(md_text)[:120]).strip()
+    author = (meta.get("author") or "").strip()
+    content_source_url = (meta.get("content_source_url") or "").strip()
+
+    html_content = process_markdown(md_text, theme, code_theme, font_size, background)
+    html_content = replace_mermaid_blocks_for_wechat(html_content)
+    html_content, uploaded_image_count = replace_content_images_with_wechat_urls(html_content, access_token)
+
+    cover_source = (
+        (meta.get("cover_image") or "").strip()
+        or extract_first_markdown_image_source(md_text)
+        or extract_first_html_image_source(html_content)
+    )
+    if cover_source:
+        raw_cover_bytes, cover_mime_type, cover_filename = fetch_binary_resource(cover_source)
+    else:
+        raw_cover_bytes, cover_mime_type, cover_filename = generate_default_cover_image(title, digest)
+
+    cover_bytes, cover_upload_mime, cover_upload_name = normalize_image_for_wechat(
+        raw_cover_bytes,
+        cover_mime_type,
+        cover_filename,
+        WECHAT_THUMB_IMAGE_MAX_BYTES,
+        "封面图片"
+    )
+    thumb_media_id = wechat_upload_thumb_image(
+        access_token,
+        cover_bytes,
+        cover_upload_name,
+        cover_upload_mime
+    )
+
+    return {
+        "article": {
+            "title": title,
+            "author": author,
+            "digest": digest,
+            "content": html_content,
+            "thumb_media_id": thumb_media_id,
+            "content_source_url": content_source_url,
+            "show_cover_pic": coerce_bool_flag(meta.get("show_cover_pic"), 1),
+            "need_open_comment": coerce_bool_flag(meta.get("need_open_comment"), 1),
+            "only_fans_can_comment": coerce_bool_flag(meta.get("only_fans_can_comment"), 0)
+        },
+        "uploaded_image_count": uploaded_image_count
+    }
+
+
 def openai_api_request(path, payload, timeout=60, ai_config=None, capability="text"):
     """调用 OpenAI API。"""
     config = sanitize_ai_config(ai_config)
@@ -513,8 +1043,18 @@ def extract_chat_completion_text(response_data):
     return ""
 
 
-def call_openai_text(system_prompt, user_prompt, max_output_tokens=500, ai_config=None):
-    """调用 OpenAI-compatible Chat Completions API 生成文本。"""
+def is_chat_completion_truncated(response_data):
+    """判断 Chat Completions 是否因 token 上限被截断。"""
+    choices = response_data.get("choices", [])
+    if not choices:
+        return False
+
+    finish_reason = str(choices[0].get("finish_reason", "") or "").strip().lower()
+    return finish_reason in {"length", "max_tokens"}
+
+
+def request_openai_text_completion(system_prompt, user_prompt, max_output_tokens=500, ai_config=None):
+    """发起一次 OpenAI-compatible Chat Completions 请求。"""
     config = sanitize_ai_config(ai_config)
     payload = {
         "model": config["text"]["model"],
@@ -534,48 +1074,204 @@ def call_openai_text(system_prompt, user_prompt, max_output_tokens=500, ai_confi
     text = extract_chat_completion_text(response_data)
     if not text:
         raise RuntimeError("AI 没有返回可解析的文本结果")
+    return text, response_data
+
+
+def call_openai_text(system_prompt, user_prompt, max_output_tokens=500, ai_config=None, retry_max_output_tokens=None):
+    """调用 OpenAI-compatible Chat Completions API 生成文本。"""
+    text, response_data = request_openai_text_completion(
+        system_prompt,
+        user_prompt,
+        max_output_tokens=max_output_tokens,
+        ai_config=ai_config
+    )
+
+    if retry_max_output_tokens and retry_max_output_tokens > max_output_tokens and is_chat_completion_truncated(response_data):
+        retry_text, _ = request_openai_text_completion(
+            system_prompt,
+            user_prompt,
+            max_output_tokens=retry_max_output_tokens,
+            ai_config=ai_config
+        )
+        return retry_text
+
     return text
 
 
-def generate_ai_title_suggestions(md_text, ai_config=None):
+def normalize_generated_text(text):
+    """压缩多余空白，保留单段文本。"""
+    return re.sub(r"\s+", " ", (text or "")).strip()
+
+
+def is_complete_chinese_sentence(text):
+    """判断文本是否自然收束，而不是停在半句。"""
+    stripped = normalize_generated_text(text)
+    if not stripped:
+        return False
+    return bool(re.search(r'[。！？!?…]["”’』」】）》）\']*$', stripped))
+
+
+def count_chinese_chars(text):
+    """统计文本中的中文字符数量。"""
+    return len(re.findall(r'[\u4e00-\u9fff]', text or ""))
+
+
+def extract_title_candidates(text):
+    """从模型返回文本中尽量提取标题候选。"""
+    raw_text = (text or "").replace("\r", "\n")
+    fragments = []
+    for block in raw_text.splitlines():
+        cleaned_block = block.strip()
+        if not cleaned_block:
+            continue
+        parts = re.split(r'[|｜/／]+', cleaned_block)
+        for part in parts:
+            candidate = re.sub(r'^\s*[-*\d.、)\]]+\s*', '', part).strip().strip("\"'“”‘’")
+            if candidate:
+                fragments.append(candidate)
+    return fragments
+
+
+def normalize_title_candidate(text):
+    """清洗标题候选，只保留完整中文标题。"""
+    candidate = normalize_generated_text(text).strip("\"'“”‘’")
+    candidate = re.sub(r'^\s*[-*\d.、)\]]+\s*', '', candidate)
+    candidate = candidate.strip(" ,，;；:：")
+    chinese_chars = count_chinese_chars(candidate)
+    ascii_letters = len(re.findall(r'[A-Za-z]', candidate))
+    if not candidate or chinese_chars < 4 or ascii_letters > 0:
+        return ""
+    return candidate
+
+
+def finalize_title_suggestions(candidates):
+    """去重并裁剪标题候选。"""
+    deduped = []
+    seen = set()
+    for item in candidates:
+        normalized = normalize_title_candidate(item)
+        if normalized and normalized not in seen:
+            deduped.append(normalized)
+            seen.add(normalized)
+    return deduped[:5]
+
+
+def rewrite_incomplete_summary(context, current_summary, ai_config=None):
+    """当摘要停在半句或明显过短时，重写为完整摘要。"""
+    system_prompt = (
+        "你是一名中文编辑，正在为社交媒体分享卡片重写摘要。"
+        "你会把一段未完成、停在半句或长度不足的摘要，改写成一段完整、顺畅、适合转发预览的中文摘要。"
+        "要求输出单段正文，长度控制在 60 到 100 个中文字符，信息密度高，语气自然，有吸引力，但不要夸张失真。"
+        "不要使用项目符号，不要加引号，不要解释，结尾必须自然收束，并以中文句号、问号或感叹号结束。"
+    )
+    user_prompt = (
+        f"文章标题: {context['title']}\n\n"
+        f"文章正文:\n{context['excerpt']}\n\n"
+        f"当前未完成摘要（仅供参考，可能停在半句）:\n{current_summary}"
+    )
+    return normalize_generated_text(
+        call_openai_text(
+            system_prompt,
+            user_prompt,
+            max_output_tokens=1000,
+            retry_max_output_tokens=1600,
+            ai_config=ai_config
+        )
+    )
+
+
+def generate_ai_title_suggestions(md_text, focus_prompt="", ai_config=None):
     """基于文章内容生成标题建议。"""
     context = build_article_context(md_text)
     system_prompt = (
-        "你是一名中文内容编辑。请根据文章内容生成标题建议。"
-        "标题必须准确、克制、适合公众号文章，避免夸张标题党。"
-        "直接返回 5 行标题，每行一个，不要编号，不要解释。"
+        "你是一名中文内容编辑，正在为社交媒体分享场景撰写中文标题。"
+        "请根据文章内容生成更容易吸引用户点开和转发的标题建议。"
+        "标题必须准确、鲜明、有传播力，但不能夸张失真或标题党。"
+        "必须只输出中文标题，不要夹杂英文单词、英文标点或中英混写。"
+        "固定返回 5 行标题，每行一个，不要编号，不要解释，不要输出少于 5 个。"
     )
     user_prompt = (
         f"文章标题（如有）: {context['title']}\n\n"
         f"文章正文摘要:\n{context['excerpt']}"
     )
-    text = call_openai_text(system_prompt, user_prompt, max_output_tokens=220, ai_config=ai_config)
-    suggestions = []
-    for line in text.splitlines():
-        cleaned = re.sub(r'^\s*[-*\d.、)\]]+\s*', '', line).strip().strip('"\'' )
-        if cleaned:
-            suggestions.append(cleaned)
-    deduped = []
-    seen = set()
-    for item in suggestions:
-        if item not in seen:
-            deduped.append(item)
-            seen.add(item)
-    return deduped[:5]
+    if focus_prompt and focus_prompt.strip():
+        user_prompt = f"{user_prompt}\n\n额外标题偏向：{focus_prompt.strip()}"
+    text = call_openai_text(
+        system_prompt,
+        user_prompt,
+        max_output_tokens=560,
+        retry_max_output_tokens=960,
+        ai_config=ai_config
+    )
+    suggestions = finalize_title_suggestions(extract_title_candidates(text))
+
+    if len(suggestions) < 5:
+        retry_system_prompt = (
+            "你是一名中文新媒体编辑。请严格补齐缺少的中文标题候选。"
+            "每个标题都必须是完整中文句子，禁止出现英文单词、缩写、emoji、编号或解释。"
+            "标题要适合社交媒体分享，能吸引点击，但不能标题党。"
+            f"当前已有标题: {' / '.join(suggestions) if suggestions else '无'}。"
+            f"请补充 {5 - len(suggestions)} 个不同的新标题。"
+            "固定逐行输出，每行 1 个标题。"
+        )
+        retry_text = call_openai_text(
+            retry_system_prompt,
+            user_prompt,
+            max_output_tokens=680,
+            retry_max_output_tokens=1200,
+            ai_config=ai_config
+        )
+        suggestions = finalize_title_suggestions(suggestions + extract_title_candidates(retry_text))
+
+    if len(suggestions) < 5:
+        rewrite_prompt = (
+            "请重新输出 5 个完整中文标题。"
+            "固定逐行输出，每行 1 个，不要编号，不要解释，不要英文。"
+        )
+        rewrite_text = call_openai_text(
+            system_prompt,
+            f"{user_prompt}\n\n补充要求:\n{rewrite_prompt}",
+            max_output_tokens=820,
+            retry_max_output_tokens=1400,
+            ai_config=ai_config
+        )
+        suggestions = finalize_title_suggestions(suggestions + extract_title_candidates(rewrite_text))
+
+    return suggestions[:5]
 
 
-def generate_ai_summary(md_text, ai_config=None):
+def generate_ai_summary(md_text, focus_prompt="", ai_config=None):
     """生成文章摘要。"""
     context = build_article_context(md_text)
     system_prompt = (
-        "你是一名中文编辑。请输出一段适合作为文章摘要的内容。"
-        "要求 90 到 140 个中文字符，信息密度高，语气自然，不要使用项目符号，不要以“本文”开头。"
+        "你是一名中文编辑，正在为社交媒体分享卡片撰写摘要。"
+        "请输出一段适合转发预览、能激发继续阅读兴趣的摘要。"
+        "要求 60 到 100 个中文字符，信息密度高，语气自然，有吸引力，但不要夸张失真，不要使用项目符号，不要以“本文”开头。"
+        "输出必须是完整单段，不能停在半句，结尾必须自然收束，并以中文句号、问号或感叹号结束。"
     )
     user_prompt = (
         f"文章标题: {context['title']}\n\n"
         f"文章正文:\n{context['excerpt']}"
     )
-    return call_openai_text(system_prompt, user_prompt, max_output_tokens=180, ai_config=ai_config).replace("\n", " ").strip()
+    if focus_prompt and focus_prompt.strip():
+        user_prompt = f"{user_prompt}\n\n额外摘要偏向：{focus_prompt.strip()}"
+    summary = normalize_generated_text(call_openai_text(
+        system_prompt,
+        user_prompt,
+        max_output_tokens=1000,
+        retry_max_output_tokens=1600,
+        ai_config=ai_config
+    ))
+
+    # if count_chinese_chars(summary) < 60 or count_chinese_chars(summary) > 100 or not is_complete_chinese_sentence(summary):
+    #     summary = rewrite_incomplete_summary(context, summary, ai_config=ai_config)
+    #
+    # if not is_complete_chinese_sentence(summary):
+    #     summary = re.sub(r'[，、；：,\s]+$', '', summary).strip()
+    #     if summary and summary[-1] not in "。！？":
+    #         summary = f"{summary}。"
+
+    return summary
 
 
 def extract_generated_image(response_data):
@@ -585,6 +1281,79 @@ def extract_generated_image(response_data):
         if image_base64:
             return image_base64, item.get("revised_prompt", "")
     raise RuntimeError("AI 没有返回可解析的图片结果")
+
+
+def is_gemini_native_image_model(model_name):
+    """判断图片模型是否应该走 Gemini SDK 原生接口。"""
+    model_name = (model_name or "").strip().lower()
+    return model_name.startswith("gemini")
+
+
+def collect_gemini_response_parts(response_data):
+    """兼容不同响应结构，提取 Gemini 返回的 parts。"""
+    parts = []
+
+    direct_parts = getattr(response_data, "parts", None) or []
+    parts.extend(direct_parts)
+
+    for candidate in getattr(response_data, "candidates", None) or []:
+        content = getattr(candidate, "content", None)
+        for part in getattr(content, "parts", None) or []:
+            parts.append(part)
+
+    return parts
+
+
+def extract_generated_image_from_gemini_response(response_data):
+    """从 Gemini SDK 响应中提取图片与文本。"""
+    image_base64 = ""
+    mime_type = "image/png"
+    text_parts = []
+
+    for part in collect_gemini_response_parts(response_data):
+        text_value = getattr(part, "text", None)
+        if text_value:
+            text_parts.append(str(text_value).strip())
+
+        inline_data = getattr(part, "inline_data", None)
+        if not inline_data:
+            continue
+
+        mime_type = getattr(inline_data, "mime_type", None) or mime_type
+        raw_data = getattr(inline_data, "data", None)
+        if isinstance(raw_data, str) and raw_data:
+            image_base64 = raw_data.strip()
+            break
+        if isinstance(raw_data, (bytes, bytearray, memoryview)):
+            image_base64 = base64.b64encode(bytes(raw_data)).decode("utf-8")
+            break
+
+    if not image_base64:
+        raise RuntimeError("Gemini SDK 没有返回可解析的图片结果")
+
+    revised_prompt = "\n".join(item for item in text_parts if item).strip()
+    return image_base64, mime_type, revised_prompt
+
+
+def generate_ai_image_with_gemini_sdk(prompt_text, model_name, api_key):
+    """使用 Gemini SDK 原生接口生成图片。"""
+    if not GOOGLE_GENAI_AVAILABLE:
+        raise RuntimeError("未安装 google-genai，无法使用 Gemini SDK 图片生成")
+    if not api_key:
+        raise RuntimeError("未配置 Gemini API Key，图片生成不可用")
+
+    client = google_genai.Client(api_key=api_key)
+    response = client.models.generate_content(
+        model=model_name,
+        contents=prompt_text,
+        config=google_genai_types.GenerateContentConfig(
+            response_modalities=["IMAGE"],
+            image_config=google_genai_types.ImageConfig(
+                aspect_ratio="16:9"
+            )
+        )
+    )
+    return extract_generated_image_from_gemini_response(response)
 
 
 def generate_ai_image(md_text, focus_prompt="", ai_config=None):
@@ -601,9 +1370,23 @@ def generate_ai_image(md_text, focus_prompt="", ai_config=None):
     if focus_prompt:
         prompt_parts.append(f"额外侧重点：{focus_prompt.strip()}")
 
+    prompt_text = "\n".join(prompt_parts)
+    image_model = config["image"]["model"]
+
+    if is_gemini_native_image_model(image_model):
+        image_base64, mime_type, revised_prompt = generate_ai_image_with_gemini_sdk(
+            prompt_text,
+            image_model,
+            config["image"]["api_key"]
+        )
+        return {
+            "image_data_url": f"data:{mime_type};base64,{image_base64}",
+            "revised_prompt": revised_prompt
+        }
+
     payload = {
-        "model": config["image"]["model"],
-        "prompt": "\n".join(prompt_parts),
+        "model": image_model,
+        "prompt": prompt_text,
         "size": "1536x1024",
         "response_format": "b64_json",
         "n": 1
@@ -1323,7 +2106,7 @@ def index():
                               },
                               'image': {
                                   'base_url': os.getenv("OPENAI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta/openai"),
-                                  'model': os.getenv("OPENAI_IMAGE_TOOL_MODEL", "imagen-4.0-generate-001")
+                                  'model': os.getenv("OPENAI_IMAGE_TOOL_MODEL", "gemini-2.5-flash-image")
                               }
                           })
 
@@ -1454,17 +2237,84 @@ def api_share():
         }), 500
 
 
+@app.route('/api/wechat/draft', methods=['POST'])
+def api_wechat_draft():
+    """推送当前文章到公众号草稿箱。"""
+    try:
+        data = request.get_json() or {}
+        md_text = data.get("markdown", "")
+        if not md_text.strip():
+            return jsonify({
+                "success": False,
+                "error": "请先输入文章内容"
+            }), 400
+
+        wechat_config = data.get("wechat_config") or {}
+        app_key = (wechat_config.get("app_key") or "").strip()
+        app_secret = (wechat_config.get("app_secret") or "").strip()
+        if not app_key or not app_secret:
+            return jsonify({
+                "success": False,
+                "error": "请填写公众号 AppKey 和 AppSecret"
+            }), 400
+
+        theme, code_theme, font_size, background = normalize_render_options(
+            data.get("theme", "default"),
+            data.get("code_theme", "github"),
+            data.get("font_size", "medium"),
+            data.get("background", "warm")
+        )
+
+        access_token = wechat_get_access_token(app_key, app_secret)
+        article_payload = prepare_wechat_article_payload(
+            md_text,
+            theme,
+            code_theme,
+            font_size,
+            background,
+            access_token,
+            meta=data.get("meta") or {}
+        )
+
+        response_data = wechat_api_request(
+            f"{WECHAT_API_BASE}/draft/add?access_token={urllib.parse.quote(access_token)}",
+            method="POST",
+            payload={"articles": [article_payload["article"]]}
+        )
+        media_id = (response_data.get("media_id") or "").strip()
+        if not media_id:
+            raise RuntimeError("微信未返回草稿 media_id")
+
+        return jsonify({
+            "success": True,
+            "title": article_payload["article"]["title"],
+            "media_id": media_id,
+            "uploaded_image_count": article_payload["uploaded_image_count"]
+        })
+    except RuntimeError as exc:
+        return jsonify({
+            "success": False,
+            "error": str(exc)
+        }), 400
+    except Exception as exc:
+        return jsonify({
+            "success": False,
+            "error": str(exc)
+        }), 500
+
+
 @app.route('/api/ai/title-suggestions', methods=['POST'])
 def api_ai_title_suggestions():
     """AI 标题建议。"""
     try:
         data = request.get_json() or {}
         md_text = data.get('markdown', '')
+        focus_prompt = data.get('focus_prompt', '')
         ai_config = data.get('ai_config') or {}
         if not md_text.strip():
             return jsonify({'success': False, 'error': '请先输入文章内容'}), 400
 
-        suggestions = generate_ai_title_suggestions(md_text, ai_config=ai_config)
+        suggestions = generate_ai_title_suggestions(md_text, focus_prompt=focus_prompt, ai_config=ai_config)
         if not suggestions:
             return jsonify({'success': False, 'error': '未生成可用标题'}), 500
 
@@ -1485,11 +2335,12 @@ def api_ai_summary():
     try:
         data = request.get_json() or {}
         md_text = data.get('markdown', '')
+        focus_prompt = data.get('focus_prompt', '')
         ai_config = data.get('ai_config') or {}
         if not md_text.strip():
             return jsonify({'success': False, 'error': '请先输入文章内容'}), 400
 
-        summary = generate_ai_summary(md_text, ai_config=ai_config)
+        summary = generate_ai_summary(md_text, focus_prompt=focus_prompt, ai_config=ai_config)
         return jsonify({
             'success': True,
             'summary': summary
@@ -1542,7 +2393,7 @@ def api_themes():
             },
             'image': {
                 'base_url': os.getenv("OPENAI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta/openai"),
-                'model': os.getenv("OPENAI_IMAGE_TOOL_MODEL", "imagen-4.0-generate-001")
+                'model': os.getenv("OPENAI_IMAGE_TOOL_MODEL", "gemini-2.5-flash-image")
             }
         }
     })

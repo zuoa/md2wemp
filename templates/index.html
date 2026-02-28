@@ -71,19 +71,21 @@
                     </svg>
                     创作助手
                 </button>
+                <button class="btn btn-outline" id="publishSettingsBtn" title="发布设置">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M4 7h16"></path>
+                        <path d="M4 12h10"></path>
+                        <path d="M4 17h7"></path>
+                        <circle cx="18" cy="12" r="3"></circle>
+                    </svg>
+                    发布设置
+                </button>
                 <button class="btn btn-outline" id="settingsBtn" title="设置 (Ctrl+,)">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <circle cx="12" cy="12" r="3"></circle>
                         <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
                     </svg>
                     设置
-                </button>
-                <button class="btn btn-primary" id="copyBtn" title="复制 HTML (Ctrl+S)">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-                    </svg>
-                    复制 HTML
                 </button>
             </div>
         </header>
@@ -154,6 +156,7 @@
                             </svg>
                             预览
                         </span>
+                        <span class="theme-badge" id="currentThemeBadge">默认主题</span>
                         <div class="preview-mode-toggle" id="previewModeToggle">
                             <button class="mode-btn active" data-mode="pc" title="PC端预览">
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -171,6 +174,13 @@
                         </div>
                     </div>
                     <div class="panel-actions">
+                        <button class="btn btn-outline btn-panel-action" id="copyPreviewBtn" title="复制 HTML">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                            </svg>
+                            复制 HTML
+                        </button>
                         <button class="btn btn-outline btn-panel-action" id="shareBtn" title="生成分享链接和二维码">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <circle cx="18" cy="5" r="3"></circle>
@@ -197,7 +207,13 @@
                             </svg>
                             导出长图
                         </button>
-                        <span class="theme-badge" id="currentThemeBadge">默认主题</span>
+                        <button class="btn btn-primary btn-panel-action" id="wechatDraftBtn" title="推送到公众号草稿">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M22 2L11 13"></path>
+                                <path d="M22 2L15 22L11 13L2 9L22 2Z"></path>
+                            </svg>
+                            推公众号
+                        </button>
                     </div>
                 </div>
                 <div class="preview-wrapper">
@@ -302,6 +318,67 @@
             </div>
         </div>
 
+        <div class="drawer-overlay" id="publishSettingsOverlay"></div>
+        <div class="drawer-panel drawer-panel-right publish-settings-panel" id="publishSettingsPanel">
+            <div class="drawer-header settings-header">
+                <div>
+                    <div class="drawer-grip" aria-hidden="true"></div>
+                    <h2>发布设置</h2>
+                </div>
+                <button class="btn-close" id="closePublishSettings" aria-label="关闭发布设置">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+            </div>
+            <div class="drawer-content settings-content">
+                <div class="settings-section">
+                    <h3 class="section-title">公众号账号</h3>
+                    <div class="media-publish-card">
+                        <div class="share-card-head">
+                            <span>账号档案</span>
+                            <span class="share-card-caption">可保存多个发布账号，推送时只需选择目标账号</span>
+                        </div>
+
+                        <label class="field-label" for="wechatProfileSelect">已保存账号</label>
+                        <div class="media-profile-toolbar">
+                            <select id="wechatProfileSelect" class="text-field">
+                                <option value="">新建账号</option>
+                            </select>
+                            <button class="btn btn-outline" id="newWechatProfileBtn" type="button">新建账号</button>
+                        </div>
+
+                        <label class="field-label" for="wechatProfileNameInput">账号名称</label>
+                        <input id="wechatProfileNameInput" class="text-field" type="text" placeholder="比如：主号 / 科技号 / 公司公众号">
+
+                        <div class="wechat-field-grid">
+                            <div>
+                                <label class="field-label" for="wechatAppKeyInput">AppKey / AppID</label>
+                                <input id="wechatAppKeyInput" class="text-field" type="text" placeholder="wx1234567890abcdef">
+                            </div>
+                            <div>
+                                <label class="field-label" for="wechatAppSecretInput">AppSecret</label>
+                                <input id="wechatAppSecretInput" class="text-field" type="password" placeholder="请输入公众号 AppSecret">
+                            </div>
+                        </div>
+
+                        <label class="field-label" for="wechatAuthorInput">作者（可选）</label>
+                        <input id="wechatAuthorInput" class="text-field" type="text" placeholder="推送时默认带入">
+
+                        <label class="field-label" for="wechatSourceUrlInput">原文链接（可选）</label>
+                        <input id="wechatSourceUrlInput" class="text-field" type="url" placeholder="https://example.com/article">
+
+                        <div class="wechat-config-actions">
+                            <button class="btn btn-outline" id="saveWechatConfigBtn" type="button">保存当前账号</button>
+                            <button class="btn btn-outline" id="resetWechatConfigBtn" type="button">删除当前账号</button>
+                        </div>
+                        <p class="settings-hint">账号凭证仅保存在当前浏览器本地，可保存多组并在推送时切换。</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <div class="drawer-overlay" id="assistantOverlay"></div>
         <div class="drawer-panel drawer-panel-right assistant-panel" id="assistantPanel">
             <div class="drawer-header assistant-panel-header">
@@ -320,8 +397,12 @@
             <div class="drawer-content assistant-panel-content">
                 <div class="assistant-studio">
                     <div class="settings-section assistant-config-section">
-                        <h3 class="section-title">AI 配置</h3>
-                        <div class="ai-config-card">
+                        <div class="assistant-config-head">
+                            <h3 class="section-title">AI 配置</h3>
+                            <button class="btn btn-outline btn-panel-action" id="aiConfigToggleBtn" type="button">收起</button>
+                        </div>
+                        <div class="ai-config-card" id="aiConfigCard">
+                            <div class="ai-config-summary" id="aiConfigSummary"></div>
                             <div class="ai-config-tabs" id="aiConfigTabs">
                                 <button class="ai-config-tab active" type="button" data-tab="text">文本 AI</button>
                                 <button class="ai-config-tab" type="button" data-tab="image">图片 AI</button>
@@ -345,10 +426,10 @@
                                 <div class="ai-config-group">
                                     <h4 class="ai-config-title">图片 AI</h4>
                                     <label class="field-label" for="aiImageBaseUrlInput">Base URL</label>
-                                    <input id="aiImageBaseUrlInput" class="text-field" type="text" placeholder="https://generativelanguage.googleapis.com/v1beta/openai">
+                                    <input id="aiImageBaseUrlInput" class="text-field" type="text" placeholder="Gemini 图片模型会忽略该项">
 
                                     <label class="field-label" for="aiImageModelInput">Model</label>
-                                    <input id="aiImageModelInput" class="text-field" type="text" placeholder="imagen-4.0-generate-001">
+                                    <input id="aiImageModelInput" class="text-field" type="text" placeholder="gemini-2.5-flash-image">
 
                                     <label class="field-label" for="aiImageApiKeyInput">API Key</label>
                                     <input id="aiImageApiKeyInput" class="text-field" type="password" placeholder="sk-...">
@@ -359,7 +440,7 @@
                                 <button class="btn btn-outline" id="saveAiConfigBtn">保存 AI 配置</button>
                                 <button class="btn btn-outline" id="resetAiConfigBtn">恢复默认</button>
                             </div>
-                            <p class="settings-hint">文本和图片分别使用各自的 Base URL、Model、API Key。留空时回退到服务端环境变量。API Key 仅保存在当前浏览器本地。</p>
+                            <p class="settings-hint">文本和图片分别使用各自的 Base URL、Model、API Key。图片模型以 `gemini` 开头时，后端会改用 Gemini SDK 原生生成并忽略图片 Base URL。API Key 仅保存在当前浏览器本地。</p>
                         </div>
                     </div>
 
@@ -372,45 +453,60 @@
                             {% if ai_enabled %}AI 已连接{% else %}未配置 OPENAI_API_KEY{% endif %}
                         </span>
                     </div>
-                    <div class="assistant-action-row">
-                        <button class="btn btn-secondary action-chip" id="suggestTitlesBtn">
-                            AI 标题建议
-                        </button>
-                        <button class="btn btn-secondary action-chip" id="generateSummaryBtn">
-                            一键摘要
-                        </button>
-                        <button class="btn btn-secondary action-chip" id="generateImageBtn">
-                            AI 配图生成
-                        </button>
-                    </div>
-                    <div class="assistant-inline-row">
-                        <input id="imageFocusInput" class="assistant-input" type="text" placeholder="配图侧重点（可选）：比如科技感、极简插画、人物场景">
-                        <button class="btn btn-outline" id="insertGeneratedImageBtn" disabled>插入文末</button>
-                        <button class="btn btn-outline" id="downloadGeneratedImageBtn" disabled>下载配图</button>
-                    </div>
                     <div class="assistant-grid">
-                        <section class="assistant-card">
-                            <div class="assistant-card-head">
-                                <span>标题建议</span>
-                                <span class="assistant-caption">点击即可替换文首 H1</span>
+                        <section class="assistant-card assistant-card-text">
+                            <div class="assistant-card-head assistant-card-head-stacked">
+                                <div class="assistant-card-meta">
+                                    <span>标题建议</span>
+                                    <span class="assistant-caption">点击任一候选即可替换文首 H1</span>
+                                </div>
+                            </div>
+                            <div class="assistant-prompt-row">
+                                <input id="titleFocusInput" class="assistant-input" type="text" placeholder="标题偏向（可选）：比如更犀利、更偏商业、突出趋势判断">
+                                <button class="btn btn-secondary action-chip" id="suggestTitlesBtn">
+                                    AI 标题建议
+                                </button>
                             </div>
                             <div id="titleSuggestionsList" class="assistant-card-body muted">
                                 生成后将在这里显示 3-5 个备选标题。
                             </div>
+                            <div class="assistant-card-toolbar assistant-result-actions">
+                                <button class="btn btn-outline" id="applyTitleSuggestionBtn" disabled>替换 H1</button>
+                                <button class="btn btn-outline" id="copyTitleSuggestionBtn" disabled>复制标题</button>
+                            </div>
                         </section>
-                        <section class="assistant-card">
-                            <div class="assistant-card-head">
-                                <span>文章摘要</span>
-                                <button class="text-action" id="copySummaryBtn" disabled>复制摘要</button>
+                        <section class="assistant-card assistant-card-text">
+                            <div class="assistant-card-head assistant-card-head-stacked">
+                                <div class="assistant-card-meta">
+                                    <span>文章摘要</span>
+                                    <span class="assistant-caption">用于导语、摘要栏或社交媒体分享文案</span>
+                                </div>
+                            </div>
+                            <div class="assistant-prompt-row">
+                                <input id="summaryFocusInput" class="assistant-input" type="text" placeholder="摘要偏向（可选）：比如突出结论、强调争议、适合转发">
+                                <button class="btn btn-secondary action-chip" id="generateSummaryBtn">
+                                    一键摘要
+                                </button>
                             </div>
                             <div id="summaryOutput" class="assistant-card-body muted">
                                 点击“一键摘要”生成适合文章导语、封面说明或摘要栏的文案。
                             </div>
+                            <div class="assistant-card-toolbar assistant-result-actions">
+                                <button class="btn btn-outline" id="copySummaryBtn" disabled>复制摘要</button>
+                            </div>
                         </section>
-                        <section class="assistant-card assistant-card-image">
-                            <div class="assistant-card-head">
-                                <span>AI 配图</span>
-                                <span class="assistant-caption">默认生成 16:9 头图</span>
+                        <section class="assistant-card assistant-card-image assistant-card-wide">
+                            <div class="assistant-card-head assistant-card-head-stacked">
+                                <div class="assistant-card-meta">
+                                    <span>AI 配图</span>
+                                    <span class="assistant-caption">默认生成 16:9 头图，可直接插入文首或文末</span>
+                                </div>
+                            </div>
+                            <div class="assistant-image-prompt-row">
+                                <input id="imageFocusInput" class="assistant-input" type="text" placeholder="配图侧重点（可选）：比如科技感、极简插画、人物场景">
+                                <button class="btn btn-secondary action-chip" id="generateImageBtn">
+                                    AI 配图生成
+                                </button>
                             </div>
                             <div id="generatedImageState" class="assistant-card-body muted">
                                 尚未生成配图。
@@ -418,6 +514,11 @@
                             <div id="generatedImagePanel" class="generated-image-panel hidden">
                                 <img id="generatedImagePreview" alt="AI 生成配图">
                                 <p id="generatedImagePrompt" class="assistant-caption"></p>
+                            </div>
+                            <div class="assistant-image-actions">
+                                <button class="btn btn-outline" id="insertImageAtTopBtn" disabled>插入文首</button>
+                                <button class="btn btn-outline" id="insertGeneratedImageBtn" disabled>插入文末</button>
+                                <button class="btn btn-outline" id="downloadGeneratedImageBtn" disabled>下载配图</button>
                             </div>
                         </section>
                     </div>
@@ -472,6 +573,145 @@
                         </div>
                         <p class="share-hint">每次重新生成都会创建一个新的分享页，内容以生成时的编辑器内容为准。</p>
                     </section>
+                </div>
+            </div>
+        </div>
+
+        <div class="wechat-overlay" id="wechatOverlay"></div>
+        <div class="wechat-modal" id="wechatModal" role="dialog" aria-modal="true" aria-labelledby="wechatModalTitle">
+            <div class="share-modal-header">
+                <div>
+                    <p class="share-modal-kicker">WeChat Draft</p>
+                    <h2 id="wechatModalTitle">推送到公众号草稿</h2>
+                    <p class="share-modal-caption">先确认标题、摘要和封面，再一键推送到草稿箱。账号凭证仅保存在当前浏览器本地。</p>
+                </div>
+                <div class="share-modal-actions">
+                    <button class="btn-close" id="closeWechat" aria-label="关闭公众号推送弹层">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="18" y1="6" x2="6" y2="18"></line>
+                            <line x1="6" y1="6" x2="18" y2="18"></line>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+            <div class="share-modal-body">
+                <div class="share-status-card wechat-status-card">
+                    <div class="wechat-status-head">
+                        <div class="wechat-status-meta">
+                            <span class="share-status-label">发布状态</span>
+                            <p class="wechat-status-title">公众号草稿发布流</p>
+                        </div>
+                        <div class="wechat-status-tags">
+                            <span class="wechat-status-tag">1 选择账号</span>
+                            <span class="wechat-status-tag">2 确认封面</span>
+                            <span class="wechat-status-tag">3 调整内容</span>
+                            <span class="wechat-status-tag">4 推送草稿</span>
+                        </div>
+                    </div>
+                    <p id="wechatStatus" class="share-status-text">先填写公众号配置，再确认标题、摘要和封面。未手动上传封面时，会优先取正文第一张图，没有则自动生成默认封面。</p>
+                </div>
+                <div class="wechat-workspace">
+                    <div class="wechat-column">
+                        <section class="wechat-card">
+                            <div class="share-card-head wechat-card-head">
+                                <span class="wechat-step-chip">01</span>
+                                <div class="wechat-card-copy">
+                                    <span>发布账号</span>
+                                    <span class="share-card-caption">选择一个已保存账号，推送时使用该账号凭证</span>
+                                </div>
+                            </div>
+                            <label class="field-label" for="wechatDraftProfileSelect">发布账号</label>
+                            <div class="media-profile-toolbar">
+                                <select id="wechatDraftProfileSelect" class="text-field">
+                                    <option value="">请选择账号</option>
+                                </select>
+                                <button class="btn btn-outline" id="manageWechatProfilesBtn" type="button">管理账号</button>
+                            </div>
+                            <div id="wechatProfileSummary" class="assistant-card-body muted wechat-profile-summary">
+                                请先在设置中新增至少一个公众号账号。
+                            </div>
+                            <p class="share-hint">账号资料在“发布设置”中统一管理。</p>
+                        </section>
+
+                        <section class="wechat-card">
+                            <div class="share-card-head wechat-card-head">
+                                <span class="wechat-step-chip">02</span>
+                                <div class="wechat-card-copy">
+                                    <span>草稿内容</span>
+                                    <span class="share-card-caption">标题、摘要和封面一起确认，确保推送前内容已经完整</span>
+                                </div>
+                            </div>
+
+                            <div class="wechat-editor-block">
+                                <div class="wechat-block-head">
+                                    <label class="field-label" for="wechatTitleInput">标题</label>
+                                </div>
+                                <div class="wechat-ai-prompt-row">
+                                    <input id="wechatTitleFocusInput" class="text-field" type="text" placeholder="标题偏向（可选）：比如更犀利、更像媒体标题、突出结论">
+                                    <button class="btn btn-outline btn-panel-action" id="wechatGenerateTitleBtn" type="button">AI 标题建议</button>
+                                </div>
+                                <input id="wechatTitleInput" class="text-field" type="text" placeholder="请输入文章标题">
+                                <div id="wechatTitleSuggestions" class="assistant-card-body muted wechat-title-suggestions">
+                                    点击后将在这里显示 3-5 个可选标题。
+                                </div>
+                                <div class="wechat-result-actions">
+                                    <button class="btn btn-outline" id="applyWechatTitleSuggestionBtn" type="button" disabled>应用到标题</button>
+                                    <button class="btn btn-outline" id="copyWechatTitleSuggestionBtn" type="button" disabled>复制标题</button>
+                                </div>
+                            </div>
+
+                            <div class="wechat-editor-block">
+                                <div class="wechat-block-head">
+                                    <label class="field-label" for="wechatDigestInput">摘要</label>
+                                </div>
+                                <div class="wechat-ai-prompt-row">
+                                    <input id="wechatDigestFocusInput" class="text-field" type="text" placeholder="摘要偏向（可选）：比如更适合转发、突出观点、突出争议">
+                                    <button class="btn btn-outline btn-panel-action" id="wechatGenerateDigestBtn" type="button">AI 生成摘要</button>
+                                </div>
+                                <textarea id="wechatDigestInput" class="text-field wechat-textarea" rows="5" placeholder="请输入文章摘要"></textarea>
+                            </div>
+
+                            <div class="wechat-editor-block">
+                                <div class="wechat-block-head">
+                                    <label class="field-label" for="wechatCoverInput">封面</label>
+                                </div>
+                                <div class="wechat-subcard">
+                                    <div class="wechat-ai-prompt-row">
+                                        <input id="wechatCoverFocusInput" class="text-field" type="text" placeholder="封面偏向（可选）：比如克制、科技感、媒体头图">
+                                    </div>
+                                    <div class="wechat-cover-toolbar">
+                                        <button class="btn btn-outline btn-panel-action" id="wechatGenerateCoverBtn" type="button">AI 生成封面</button>
+                                        <button class="btn btn-outline" id="clearWechatCoverBtn" type="button">清空当前封面</button>
+                                    </div>
+                                    <input id="wechatCoverInput" class="text-field" type="file" accept="image/*">
+                                    <div class="wechat-cover-preview" id="wechatCoverPreview">
+                                        <div class="wechat-cover-placeholder" id="wechatCoverPlaceholder">未选择封面。留空时会优先取正文第一张图；如果文章无图，则自动生成一张默认封面。</div>
+                                        <img id="wechatCoverPreviewImage" alt="公众号封面预览" class="hidden">
+                                    </div>
+                                </div>
+                                <p class="share-hint">公众号封面建议保持简洁、完整，避免文字过多。</p>
+                            </div>
+                        </section>
+
+                        <section class="wechat-card wechat-publish-card">
+                            <div class="share-card-head wechat-card-head">
+                                <span class="wechat-step-chip">03</span>
+                                <div class="wechat-card-copy">
+                                    <span>推送结果</span>
+                                    <span class="share-card-caption">推送成功后会返回草稿 `Media ID`，可继续用于后续发布流程</span>
+                                </div>
+                            </div>
+                            <div class="wechat-submit-panel">
+                                <label class="field-label" for="wechatMediaIdInput">草稿 Media ID</label>
+                                <input id="wechatMediaIdInput" class="text-field" type="text" readonly placeholder="推送成功后显示">
+
+                                <div class="wechat-submit-row">
+                                    <button class="btn btn-primary" id="wechatSubmitBtn" type="button">一键推送到草稿箱</button>
+                                </div>
+                            </div>
+                            <p class="share-hint">推送前请确认标题、摘要和封面内容都已经是最终版本。</p>
+                        </section>
+                    </div>
                 </div>
             </div>
         </div>
