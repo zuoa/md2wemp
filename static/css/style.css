@@ -1089,6 +1089,11 @@ body.drawer-open {
     visibility: visible;
 }
 
+#templateOverlay.active {
+    opacity: 1;
+    visibility: visible;
+}
+
 .share-modal,
 .wechat-modal {
     position: fixed;
@@ -1116,8 +1121,18 @@ body.drawer-open {
     width: min(820px, calc(100vw - 28px));
 }
 
+.template-modal {
+    width: min(920px, calc(100vw - 28px));
+}
+
 .share-modal.active,
 .wechat-modal.active {
+    opacity: 1;
+    visibility: visible;
+    transform: translate(-50%, -50%) scale(1);
+}
+
+.template-modal.active {
     opacity: 1;
     visibility: visible;
     transform: translate(-50%, -50%) scale(1);
@@ -1203,6 +1218,13 @@ body.drawer-open {
     margin-top: 18px;
 }
 
+.template-workspace {
+    display: grid;
+    grid-template-columns: 280px minmax(0, 1fr);
+    gap: 18px;
+    margin-top: 18px;
+}
+
 .share-card {
     padding: 18px;
     border-radius: 22px;
@@ -1232,6 +1254,74 @@ body.drawer-open {
 .share-card-caption {
     font-size: 12px;
     color: var(--text-tertiary);
+}
+
+.template-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-height: 320px;
+    max-height: 460px;
+    overflow-y: auto;
+}
+
+.template-empty {
+    padding: 16px;
+    border-radius: 16px;
+    border: 1px dashed rgba(17, 24, 39, 0.12);
+    color: var(--text-tertiary);
+    font-size: 13px;
+    line-height: 1.7;
+    background: rgba(248, 250, 252, 0.8);
+}
+
+.template-list-item {
+    width: 100%;
+    padding: 14px 16px;
+    text-align: left;
+    border-radius: 16px;
+    border: 1px solid rgba(17, 24, 39, 0.08);
+    background: rgba(255, 255, 255, 0.84);
+    cursor: pointer;
+    transition: border-color var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out), box-shadow var(--duration-fast) var(--ease-out);
+}
+
+.template-list-item:hover {
+    transform: translateY(-1px);
+    border-color: rgba(37, 99, 235, 0.24);
+    box-shadow: var(--shadow-sm);
+}
+
+.template-list-item.is-selected {
+    border-color: rgba(37, 99, 235, 0.4);
+    box-shadow: inset 0 0 0 1px rgba(37, 99, 235, 0.08);
+    background: linear-gradient(180deg, rgba(239, 246, 255, 0.96), rgba(255, 255, 255, 0.92));
+}
+
+.template-list-title {
+    display: block;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.template-list-meta {
+    display: block;
+    margin-top: 4px;
+    font-size: 12px;
+    color: var(--text-tertiary);
+}
+
+.template-textarea {
+    min-height: 240px;
+    resize: vertical;
+}
+
+.template-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 16px;
 }
 
 .share-qr-frame {
@@ -2332,7 +2422,8 @@ body.drawer-open {
     }
 
     .share-modal,
-    .wechat-modal {
+    .wechat-modal,
+    .template-modal {
         width: min(100vw - 18px, 760px);
         max-height: min(88vh, 760px);
         border-radius: 24px;
@@ -2354,7 +2445,8 @@ body.drawer-open {
     }
 
     .share-grid,
-    .wechat-workspace {
+    .wechat-workspace,
+    .template-workspace {
         grid-template-columns: 1fr;
     }
 
@@ -2439,6 +2531,7 @@ button:focus:not(:focus-visible) {
     .drawer-panel,
     .share-overlay,
     .share-modal,
+    .template-modal,
     .toast {
         display: none !important;
     }

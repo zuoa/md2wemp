@@ -131,6 +131,21 @@
                         Markdown
                     </span>
                     <div class="panel-actions">
+                        <button class="btn btn-outline btn-panel-action" id="insertReadingInfoBtn" title="插入阅读信息">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M12 6v6l4 2"></path>
+                                <circle cx="12" cy="12" r="9"></circle>
+                            </svg>
+                            阅读信息
+                        </button>
+                        <button class="btn btn-outline btn-panel-action" id="templateManagerBtn" title="管理和插入模板">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M4 6h16"></path>
+                                <path d="M4 12h16"></path>
+                                <path d="M4 18h10"></path>
+                            </svg>
+                            模板
+                        </button>
                         <button class="btn-icon" id="clearBtn" title="清空内容">
                             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <polyline points="3 6 5 6 21 6"></polyline>
@@ -742,6 +757,64 @@
                             <p class="share-hint">推送前请确认标题、摘要和封面内容都已经是最终版本。</p>
                         </section>
                     </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="share-overlay" id="templateOverlay"></div>
+        <div class="share-modal template-modal" id="templateModal" role="dialog" aria-modal="true" aria-labelledby="templateModalTitle">
+            <div class="share-modal-header">
+                <div>
+                    <p class="share-modal-kicker">Snippet Library</p>
+                    <h2 id="templateModalTitle">文章模板</h2>
+                    <p class="share-modal-caption">维护常用文头和文末片段，后续可一键插入到当前文章。</p>
+                </div>
+                <div class="share-modal-actions">
+                    <button class="btn btn-outline btn-panel-action" id="newTemplateBtn" type="button">新建模板</button>
+                    <button class="btn-close" id="closeTemplate" aria-label="关闭模板弹层">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="18" y1="6" x2="6" y2="18"></line>
+                            <line x1="6" y1="6" x2="18" y2="18"></line>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+            <div class="share-modal-body">
+                <div class="share-status-card">
+                    <span class="share-status-label">模板说明</span>
+                    <p id="templateStatus" class="share-status-text">新建后可设置默认插入位置，模板内容使用 Markdown 编写。</p>
+                </div>
+                <div class="template-workspace">
+                    <section class="share-card template-list-card">
+                        <div class="share-card-head">
+                            <span>模板列表</span>
+                            <span class="share-card-caption">点击即可切换，插入时会按默认位置加入当前文章</span>
+                        </div>
+                        <div id="templateList" class="template-list" aria-live="polite"></div>
+                    </section>
+                    <section class="share-card template-editor-card">
+                        <div class="share-card-head">
+                            <span>模板编辑</span>
+                            <span class="share-card-caption">保存后会保留在当前浏览器本地</span>
+                        </div>
+                        <label class="field-label" for="templateNameInput">模板名称</label>
+                        <input id="templateNameInput" class="text-field" type="text" placeholder="比如：文末关注卡 / 开头导语 / 活动报名说明">
+
+                        <label class="field-label" for="templatePositionSelect">默认位置</label>
+                        <select id="templatePositionSelect" class="text-field">
+                            <option value="head">文头</option>
+                            <option value="tail">文末</option>
+                        </select>
+
+                        <label class="field-label" for="templateContentInput">模板内容</label>
+                        <textarea id="templateContentInput" class="text-field wechat-textarea template-textarea" rows="12" placeholder="请输入 Markdown 模板内容"></textarea>
+
+                        <div class="template-actions">
+                            <button class="btn btn-primary" id="saveTemplateBtn" type="button">保存模板</button>
+                            <button class="btn btn-outline" id="insertTemplateBtn" type="button">插入当前文章</button>
+                            <button class="btn btn-outline" id="deleteTemplateBtn" type="button">删除模板</button>
+                        </div>
+                    </section>
                 </div>
             </div>
         </div>

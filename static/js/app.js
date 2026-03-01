@@ -27,7 +27,8 @@ class MD2WE {
             imageFocusPrompt: '',
             wechatTitleFocusPrompt: '',
             wechatDigestFocusPrompt: '',
-            wechatCoverFocusPrompt: ''
+            wechatCoverFocusPrompt: '',
+            articleTemplates: []
         };
 
         this.previewMode = 'mobile';
@@ -44,6 +45,7 @@ class MD2WE {
         this.shareRequestInFlight = false;
         this.wechatRequestInFlight = false;
         this.wechatCoverImageDataUrl = '';
+        this.selectedTemplateId = '';
         this.editorLines = [''];
         this.editorLineOffsets = [0];
         this.selectionSyncFrame = null;
@@ -116,6 +118,20 @@ class MD2WE {
         this.wechatOverlay = document.getElementById('wechatOverlay');
         this.wechatModal = document.getElementById('wechatModal');
         this.closeWechat = document.getElementById('closeWechat');
+        this.templateOverlay = document.getElementById('templateOverlay');
+        this.templateModal = document.getElementById('templateModal');
+        this.closeTemplate = document.getElementById('closeTemplate');
+        this.insertReadingInfoBtn = document.getElementById('insertReadingInfoBtn');
+        this.templateManagerBtn = document.getElementById('templateManagerBtn');
+        this.newTemplateBtn = document.getElementById('newTemplateBtn');
+        this.templateStatus = document.getElementById('templateStatus');
+        this.templateList = document.getElementById('templateList');
+        this.templateNameInput = document.getElementById('templateNameInput');
+        this.templatePositionSelect = document.getElementById('templatePositionSelect');
+        this.templateContentInput = document.getElementById('templateContentInput');
+        this.saveTemplateBtn = document.getElementById('saveTemplateBtn');
+        this.insertTemplateBtn = document.getElementById('insertTemplateBtn');
+        this.deleteTemplateBtn = document.getElementById('deleteTemplateBtn');
         this.wechatStatus = document.getElementById('wechatStatus');
         this.wechatProfileSelect = document.getElementById('wechatProfileSelect');
         this.newWechatProfileBtn = document.getElementById('newWechatProfileBtn');
@@ -243,6 +259,8 @@ class MD2WE {
         this.shareBtn.addEventListener('click', () => this.openShareModal());
         this.copyPreviewBtn.addEventListener('click', () => this.copyHTML());
         this.wechatDraftBtn.addEventListener('click', () => this.openWechatModal());
+        this.insertReadingInfoBtn.addEventListener('click', () => this.insertReadingInfo());
+        this.templateManagerBtn.addEventListener('click', () => this.openTemplateModal());
 
         this.closeSettings.addEventListener('click', () => this.closeSettingsPanel());
         this.settingsOverlay.addEventListener('click', () => this.closeSettingsPanel());
@@ -254,6 +272,12 @@ class MD2WE {
         this.shareOverlay.addEventListener('click', () => this.closeShareModal());
         this.closeWechat.addEventListener('click', () => this.closeWechatModal());
         this.wechatOverlay.addEventListener('click', () => this.closeWechatModal());
+        this.closeTemplate.addEventListener('click', () => this.closeTemplateModal());
+        this.templateOverlay.addEventListener('click', () => this.closeTemplateModal());
+        this.newTemplateBtn.addEventListener('click', () => this.startNewTemplate());
+        this.saveTemplateBtn.addEventListener('click', () => this.saveCurrentTemplate());
+        this.insertTemplateBtn.addEventListener('click', () => this.insertSelectedTemplate());
+        this.deleteTemplateBtn.addEventListener('click', () => this.deleteCurrentTemplate());
         this.wechatProfileSelect.addEventListener('change', () => this.handleWechatProfileSelectChange(this.wechatProfileSelect.value));
         this.wechatDraftProfileSelect.addEventListener('change', () => this.handleWechatProfileSelectChange(this.wechatDraftProfileSelect.value));
         this.newWechatProfileBtn.addEventListener('click', () => this.startNewWechatProfile());
@@ -376,6 +400,7 @@ class MD2WE {
                 this.closeAllDrawers();
                 this.closeShareModal();
                 this.closeWechatModal();
+                this.closeTemplateModal();
             }
         });
 
@@ -919,25 +944,238 @@ class MD2WE {
     }
 
     updateStats() {
-        const text = this.editor.value;
+        const stats = this.computeArticleStats(this.editor.value);
+
+        this.charCount.textContent = stats.chineseChars;
+        this.wordCount.textContent = stats.englishWords;
+        this.totalCount.textContent = stats.total;
+        this.readingTime.textContent = `${stats.readMinutes} 分钟`;
+        this.headingCount.textContent = stats.headings;
+        this.imageCount.textContent = stats.images;
+        this.lineCount.textContent = stats.lines;
+    }
+
+    computeArticleStats(text) {
         const chineseChars = (text.match(/[\u4e00-\u9fff]/g) || []).length;
         const englishWords = (text.match(/\b[a-zA-Z]+(?:['’-][a-zA-Z]+)*\b/g) || []).length;
         const total = text.length;
         const lines = text ? text.split('\n').length : 0;
         const headings = (text.match(/^\s{0,3}#{1,6}\s+/gm) || []).length;
         const images = (text.match(/!\[[^\]]*\]\(([^)]+)\)/g) || []).length;
-
         const chineseMinutes = chineseChars / 300;
         const englishMinutes = englishWords / 200;
         const readMinutes = text.trim() ? Math.max(1, Math.ceil(chineseMinutes + englishMinutes)) : 0;
 
-        this.charCount.textContent = chineseChars;
-        this.wordCount.textContent = englishWords;
-        this.totalCount.textContent = total;
-        this.readingTime.textContent = `${readMinutes} 分钟`;
-        this.headingCount.textContent = headings;
-        this.imageCount.textContent = images;
-        this.lineCount.textContent = lines;
+        return {
+            chineseChars,
+            englishWords,
+            total,
+            lines,
+            headings,
+            images,
+            readMinutes
+        };
+    }
+
+    applyEditorValue(nextValue, selectionStart = null, selectionEnd = selectionStart) {
+        this.editor.value = nextValue;
+        if (typeof selectionStart === 'number') {
+            this.editor.focus();
+            this.editor.setSelectionRange(selectionStart, selectionEnd ?? selectionStart);
+        }
+        this.saveContent();
+        this.invalidateShareState();
+        this.updateStats();
+        this.updateEditorSyntax();
+        this.updatePreview();
+    }
+
+    insertTextAtCursor(text) {
+        const start = this.editor.selectionStart;
+        const end = this.editor.selectionEnd;
+        const nextValue = `${this.editor.value.slice(0, start)}${text}${this.editor.value.slice(end)}`;
+        const caret = start + text.length;
+        this.applyEditorValue(nextValue, caret, caret);
+    }
+
+    insertTextAtBoundary(text, position = 'tail') {
+        const current = this.editor.value;
+        const normalized = text.trim();
+        if (!normalized) {
+            return;
+        }
+
+        let nextValue = current;
+        let caret = 0;
+        if (position === 'head') {
+            nextValue = current.trimStart()
+                ? `${normalized}\n\n${current.trimStart()}`
+                : normalized;
+            caret = 0;
+        } else {
+            nextValue = current.trimEnd()
+                ? `${current.trimEnd()}\n\n${normalized}`
+                : normalized;
+            caret = nextValue.length;
+        }
+
+        this.applyEditorValue(nextValue, caret, caret);
+    }
+
+    insertReadingInfo() {
+        const stats = this.computeArticleStats(this.editor.value);
+        if (!this.editor.value.trim()) {
+            this.showToast('请先输入文章内容', 'error');
+            return;
+        }
+
+        const snippet = `> 全文约 ${stats.chineseChars + stats.englishWords} 字，阅读大约需要 ${stats.readMinutes} 分钟`;
+        this.insertTextAtCursor(snippet);
+        this.showToast('阅读信息已插入到当前光标位置', 'success');
+    }
+
+    createTemplateId() {
+        return `template-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    }
+
+    getArticleTemplates() {
+        return Array.isArray(this.currentSettings.articleTemplates) ? this.currentSettings.articleTemplates : [];
+    }
+
+    normalizeArticleTemplate(template, index = 0) {
+        if (!template || typeof template !== 'object') {
+            return null;
+        }
+
+        const name = String(template.name || '').trim();
+        const content = String(template.content || '').trim();
+        if (!name || !content) {
+            return null;
+        }
+
+        const position = template.position === 'head' ? 'head' : 'tail';
+        return {
+            id: String(template.id || `template-${index + 1}`),
+            name,
+            position,
+            content
+        };
+    }
+
+    migrateArticleTemplates() {
+        const templates = this.getArticleTemplates()
+            .map((template, index) => this.normalizeArticleTemplate(template, index))
+            .filter(Boolean);
+        this.currentSettings.articleTemplates = templates;
+
+        if (!templates.some((template) => template.id === this.selectedTemplateId)) {
+            this.selectedTemplateId = templates[0]?.id || '';
+        }
+    }
+
+    getSelectedTemplate() {
+        return this.getArticleTemplates().find((template) => template.id === this.selectedTemplateId) || null;
+    }
+
+    startNewTemplate() {
+        this.selectedTemplateId = '';
+        this.populateTemplateEditor();
+        this.renderTemplateList();
+        this.templateNameInput.focus();
+        this.templateStatus.textContent = '正在创建新模板，填写后点击“保存模板”即可。';
+    }
+
+    populateTemplateEditor() {
+        const selected = this.getSelectedTemplate();
+        this.templateNameInput.value = selected?.name || '';
+        this.templatePositionSelect.value = selected?.position || 'tail';
+        this.templateContentInput.value = selected?.content || '';
+        this.deleteTemplateBtn.disabled = !selected;
+        this.insertTemplateBtn.disabled = !selected;
+    }
+
+    renderTemplateList() {
+        const templates = this.getArticleTemplates();
+        this.templateList.innerHTML = '';
+
+        if (!templates.length) {
+            const empty = document.createElement('div');
+            empty.className = 'template-empty';
+            empty.textContent = '还没有模板。你可以新建一个文头导语、文末引导语或图片说明模板。';
+            this.templateList.appendChild(empty);
+            return;
+        }
+
+        templates.forEach((template) => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'template-list-item';
+            if (template.id === this.selectedTemplateId) {
+                button.classList.add('is-selected');
+            }
+            button.innerHTML = `
+                <span class="template-list-title">${this.escapeHTML(template.name)}</span>
+                <span class="template-list-meta">默认插入到${template.position === 'head' ? '文头' : '文末'}</span>
+            `;
+            button.addEventListener('click', () => {
+                this.selectedTemplateId = template.id;
+                this.renderTemplateList();
+                this.populateTemplateEditor();
+                this.templateStatus.textContent = `已选择模板「${template.name}」。`;
+            });
+            this.templateList.appendChild(button);
+        });
+    }
+
+    saveCurrentTemplate() {
+        const name = this.templateNameInput.value.trim();
+        const content = this.templateContentInput.value.trim();
+        const position = this.templatePositionSelect.value === 'head' ? 'head' : 'tail';
+
+        if (!name || !content) {
+            this.showToast('请填写模板名称和内容', 'error');
+            return;
+        }
+
+        const id = this.selectedTemplateId || this.createTemplateId();
+        const nextTemplate = { id, name, position, content };
+        const nextTemplates = this.getArticleTemplates().filter((template) => template.id !== id);
+        nextTemplates.push(nextTemplate);
+        this.currentSettings.articleTemplates = nextTemplates;
+        this.selectedTemplateId = id;
+        this.saveSettings();
+        this.renderTemplateList();
+        this.populateTemplateEditor();
+        this.templateStatus.textContent = `模板「${name}」已保存到本地。`;
+        this.showToast('模板已保存', 'success');
+    }
+
+    insertSelectedTemplate() {
+        const selected = this.getSelectedTemplate();
+        if (!selected) {
+            this.showToast('请先选择一个模板', 'error');
+            return;
+        }
+
+        this.insertTextAtBoundary(selected.content, selected.position);
+        this.templateStatus.textContent = `模板「${selected.name}」已插入到${selected.position === 'head' ? '文头' : '文末'}。`;
+        this.showToast(`模板已插入${selected.position === 'head' ? '文头' : '文末'}`, 'success');
+    }
+
+    deleteCurrentTemplate() {
+        const selected = this.getSelectedTemplate();
+        if (!selected) {
+            this.showToast('当前没有可删除的模板', 'error');
+            return;
+        }
+
+        this.currentSettings.articleTemplates = this.getArticleTemplates().filter((template) => template.id !== selected.id);
+        this.selectedTemplateId = this.currentSettings.articleTemplates[0]?.id || '';
+        this.saveSettings();
+        this.renderTemplateList();
+        this.populateTemplateEditor();
+        this.templateStatus.textContent = `模板「${selected.name}」已删除。`;
+        this.showToast('模板已删除', 'success');
     }
 
     async updatePreview() {
@@ -1156,6 +1394,7 @@ ${this.escapeHTML(source)}</div>
         this.closeShareModal();
         this.closeAllDrawers();
         this.closeWechatModal();
+        this.closeTemplateModal();
         panel.style.removeProperty('transform');
         panel.classList.add('active');
         overlay.classList.add('active');
@@ -1186,7 +1425,8 @@ ${this.escapeHTML(source)}</div>
             || this.publishSettingsPanel.classList.contains('active')
             || this.assistantPanel.classList.contains('active')
             || this.shareModal.classList.contains('active')
-            || this.wechatModal.classList.contains('active');
+            || this.wechatModal.classList.contains('active')
+            || this.templateModal.classList.contains('active');
         document.body.classList.toggle('drawer-open', hasOpenLayer);
     }
 
@@ -1197,6 +1437,7 @@ ${this.escapeHTML(source)}</div>
         }
 
         this.closeAllDrawers();
+        this.closeTemplateModal();
         this.shareOverlay.classList.add('active');
         this.shareModal.classList.add('active');
         this.updatePageLockState();
@@ -1217,6 +1458,7 @@ ${this.escapeHTML(source)}</div>
 
         this.closeAllDrawers();
         this.closeShareModal();
+        this.closeTemplateModal();
         this.wechatOverlay.classList.add('active');
         this.wechatModal.classList.add('active');
         this.populateWechatSettings();
@@ -1228,6 +1470,23 @@ ${this.escapeHTML(source)}</div>
     closeWechatModal() {
         this.wechatOverlay.classList.remove('active');
         this.wechatModal.classList.remove('active');
+        this.updatePageLockState();
+    }
+
+    openTemplateModal() {
+        this.closeAllDrawers();
+        this.closeShareModal();
+        this.closeWechatModal();
+        this.templateOverlay.classList.add('active');
+        this.templateModal.classList.add('active');
+        this.renderTemplateList();
+        this.populateTemplateEditor();
+        this.updatePageLockState();
+    }
+
+    closeTemplateModal() {
+        this.templateOverlay.classList.remove('active');
+        this.templateModal.classList.remove('active');
         this.updatePageLockState();
     }
 
@@ -2445,6 +2704,7 @@ gantt
         }
 
         this.migrateWechatProfiles();
+        this.migrateArticleTemplates();
 
         const themeName = CONFIG.themes[this.currentSettings.theme]?.name || '默认主题';
         this.currentThemeBadge.textContent = themeName;
