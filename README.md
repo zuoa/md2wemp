@@ -10,6 +10,7 @@ MD2WE 是一个面向微信公众号场景的 Markdown 编辑器，提供实时�
 - 12 种排版主题和 8 种代码高亮方案
 - Mermaid 图表渲染
 - AI 标题建议、摘要生成和文章配图
+- 上传图片后自动插入 Markdown 图片语法
 - 复制 HTML、下载 HTML、长图导出
 - 公开分享页、二维码和独立图片 URL
 - 一键推送到微信公众号草稿箱
@@ -155,6 +156,10 @@ python3 scripts/generate_ai_crypto_key.py
 ### `POST /api/share`
 
 根据当前 Markdown 内容生成公开分享页。
+
+### `POST /api/upload/image`
+
+上传图片后返回公开 URL 和可直接插入编辑器的 Markdown 语法。
 
 ### `POST /api/wechat/draft`
 

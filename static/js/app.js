@@ -43,6 +43,8 @@ class MD2WE {
         this.selectedWechatTitleSuggestion = '';
         this.currentShareLink = '';
         this.shareRequestInFlight = false;
+        this.uploadedImageMarkdown = '';
+        this.uploadedImageUrl = '';
         this.wechatRequestInFlight = false;
         this.wechatCoverImageDataUrl = '';
         this.selectedTemplateId = '';
@@ -70,6 +72,7 @@ class MD2WE {
 
     bindElements() {
         this.editor = document.getElementById('editor');
+        this.imageUploadInput = document.getElementById('imageUploadInput');
         this.editorSyntaxLayer = document.getElementById('editorSyntaxLayer');
         this.editorSyntax = document.getElementById('editorSyntax');
         this.editorSelectionOverlay = document.getElementById('editorSelectionOverlay');
@@ -85,6 +88,7 @@ class MD2WE {
         this.assistantBtn = document.getElementById('assistantBtn');
         this.clearBtn = document.getElementById('clearBtn');
         this.downloadBtn = document.getElementById('downloadBtn');
+        this.uploadImageBtn = document.getElementById('uploadImageBtn');
         this.shareBtn = document.getElementById('shareBtn');
         this.copyPreviewBtn = document.getElementById('copyPreviewBtn');
         this.wechatDraftBtn = document.getElementById('wechatDraftBtn');
@@ -121,6 +125,18 @@ class MD2WE {
         this.templateOverlay = document.getElementById('templateOverlay');
         this.templateModal = document.getElementById('templateModal');
         this.closeTemplate = document.getElementById('closeTemplate');
+        this.uploadImageOverlay = document.getElementById('uploadImageOverlay');
+        this.uploadImageModal = document.getElementById('uploadImageModal');
+        this.closeUploadImage = document.getElementById('closeUploadImage');
+        this.selectImageFileBtn = document.getElementById('selectImageFileBtn');
+        this.uploadImageStatus = document.getElementById('uploadImageStatus');
+        this.uploadImageFileName = document.getElementById('uploadImageFileName');
+        this.uploadImageUrlInput = document.getElementById('uploadImageUrlInput');
+        this.uploadImagePreviewPanel = document.getElementById('uploadImagePreviewPanel');
+        this.uploadImagePreview = document.getElementById('uploadImagePreview');
+        this.uploadImageMarkdownOutput = document.getElementById('uploadImageMarkdownOutput');
+        this.copyImageMarkdownBtn = document.getElementById('copyImageMarkdownBtn');
+        this.insertImageMarkdownBtn = document.getElementById('insertImageMarkdownBtn');
         this.insertReadingInfoBtn = document.getElementById('insertReadingInfoBtn');
         this.templateManagerBtn = document.getElementById('templateManagerBtn');
         this.newTemplateBtn = document.getElementById('newTemplateBtn');
@@ -256,6 +272,7 @@ class MD2WE {
         this.assistantBtn.addEventListener('click', () => this.openAssistant());
         this.clearBtn.addEventListener('click', () => this.clearEditor());
         this.downloadBtn.addEventListener('click', () => this.downloadHTML());
+        this.uploadImageBtn.addEventListener('click', () => this.openUploadImageModal());
         this.shareBtn.addEventListener('click', () => this.openShareModal());
         this.copyPreviewBtn.addEventListener('click', () => this.copyHTML());
         this.wechatDraftBtn.addEventListener('click', () => this.openWechatModal());
@@ -274,10 +291,15 @@ class MD2WE {
         this.wechatOverlay.addEventListener('click', () => this.closeWechatModal());
         this.closeTemplate.addEventListener('click', () => this.closeTemplateModal());
         this.templateOverlay.addEventListener('click', () => this.closeTemplateModal());
+        this.closeUploadImage.addEventListener('click', () => this.closeUploadImageModal());
+        this.uploadImageOverlay.addEventListener('click', () => this.closeUploadImageModal());
+        this.selectImageFileBtn.addEventListener('click', () => this.openImageUploadDialog());
         this.newTemplateBtn.addEventListener('click', () => this.startNewTemplate());
         this.saveTemplateBtn.addEventListener('click', () => this.saveCurrentTemplate());
         this.insertTemplateBtn.addEventListener('click', () => this.insertSelectedTemplate());
         this.deleteTemplateBtn.addEventListener('click', () => this.deleteCurrentTemplate());
+        this.copyImageMarkdownBtn.addEventListener('click', () => this.copyUploadedImageMarkdown());
+        this.insertImageMarkdownBtn.addEventListener('click', () => this.insertUploadedImageMarkdown());
         this.wechatProfileSelect.addEventListener('change', () => this.handleWechatProfileSelectChange(this.wechatProfileSelect.value));
         this.wechatDraftProfileSelect.addEventListener('change', () => this.handleWechatProfileSelectChange(this.wechatDraftProfileSelect.value));
         this.newWechatProfileBtn.addEventListener('click', () => this.startNewWechatProfile());
@@ -287,6 +309,9 @@ class MD2WE {
         this.openShareLinkBtn.addEventListener('click', () => this.openShareLink());
         this.shareUrlInput.addEventListener('focus', () => this.shareUrlInput.select());
         this.wechatCoverInput.addEventListener('change', (event) => this.handleWechatCoverChange(event));
+        this.imageUploadInput.addEventListener('change', (event) => this.handleImageUploadChange(event));
+        this.uploadImageMarkdownOutput.addEventListener('focus', () => this.uploadImageMarkdownOutput.select());
+        this.uploadImageUrlInput.addEventListener('focus', () => this.uploadImageUrlInput.select());
         this.clearWechatCoverBtn.addEventListener('click', () => this.clearWechatCover());
         this.wechatGenerateCoverBtn.addEventListener('click', () => this.runWechatAIImage());
         this.saveWechatConfigBtn.addEventListener('click', () => this.saveWechatConfig());
@@ -401,6 +426,7 @@ class MD2WE {
                 this.closeShareModal();
                 this.closeWechatModal();
                 this.closeTemplateModal();
+                this.closeUploadImageModal();
             }
         });
 
@@ -1395,6 +1421,7 @@ ${this.escapeHTML(source)}</div>
         this.closeAllDrawers();
         this.closeWechatModal();
         this.closeTemplateModal();
+        this.closeUploadImageModal();
         panel.style.removeProperty('transform');
         panel.classList.add('active');
         overlay.classList.add('active');
@@ -1426,7 +1453,8 @@ ${this.escapeHTML(source)}</div>
             || this.assistantPanel.classList.contains('active')
             || this.shareModal.classList.contains('active')
             || this.wechatModal.classList.contains('active')
-            || this.templateModal.classList.contains('active');
+            || this.templateModal.classList.contains('active')
+            || this.uploadImageModal.classList.contains('active');
         document.body.classList.toggle('drawer-open', hasOpenLayer);
     }
 
@@ -1438,6 +1466,7 @@ ${this.escapeHTML(source)}</div>
 
         this.closeAllDrawers();
         this.closeTemplateModal();
+        this.closeUploadImageModal();
         this.shareOverlay.classList.add('active');
         this.shareModal.classList.add('active');
         this.updatePageLockState();
@@ -1459,6 +1488,7 @@ ${this.escapeHTML(source)}</div>
         this.closeAllDrawers();
         this.closeShareModal();
         this.closeTemplateModal();
+        this.closeUploadImageModal();
         this.wechatOverlay.classList.add('active');
         this.wechatModal.classList.add('active');
         this.populateWechatSettings();
@@ -1477,6 +1507,7 @@ ${this.escapeHTML(source)}</div>
         this.closeAllDrawers();
         this.closeShareModal();
         this.closeWechatModal();
+        this.closeUploadImageModal();
         this.templateOverlay.classList.add('active');
         this.templateModal.classList.add('active');
         this.renderTemplateList();
@@ -1487,6 +1518,23 @@ ${this.escapeHTML(source)}</div>
     closeTemplateModal() {
         this.templateOverlay.classList.remove('active');
         this.templateModal.classList.remove('active');
+        this.updatePageLockState();
+    }
+
+    openUploadImageModal() {
+        this.closeAllDrawers();
+        this.closeShareModal();
+        this.closeWechatModal();
+        this.closeTemplateModal();
+        this.resetUploadImageState();
+        this.uploadImageOverlay.classList.add('active');
+        this.uploadImageModal.classList.add('active');
+        this.updatePageLockState();
+    }
+
+    closeUploadImageModal() {
+        this.uploadImageOverlay.classList.remove('active');
+        this.uploadImageModal.classList.remove('active');
         this.updatePageLockState();
     }
 
@@ -1621,6 +1669,114 @@ ${html}
         a.click();
         URL.revokeObjectURL(url);
         this.showToast('HTML 文件已下载', 'success');
+    }
+
+    resetUploadImageState() {
+        this.uploadedImageMarkdown = '';
+        this.uploadedImageUrl = '';
+        this.imageUploadInput.value = '';
+        this.uploadImageFileName.value = '';
+        this.uploadImageUrlInput.value = '';
+        this.uploadImagePreview.removeAttribute('src');
+        this.uploadImagePreviewPanel.classList.add('hidden');
+        this.uploadImageMarkdownOutput.value = '';
+        this.uploadImageStatus.textContent = '选择一张图片开始上传。支持 JPG、PNG、WebP、GIF，单张不超过 10MB。';
+        this.copyImageMarkdownBtn.disabled = true;
+        this.insertImageMarkdownBtn.disabled = true;
+        this.selectImageFileBtn.disabled = false;
+        this.selectImageFileBtn.classList.remove('is-busy');
+        this.selectImageFileBtn.textContent = '选择图片';
+    }
+
+    openImageUploadDialog() {
+        this.imageUploadInput.value = '';
+        this.imageUploadInput.click();
+    }
+
+    async handleImageUploadChange(event) {
+        const file = event.target.files?.[0];
+        event.target.value = '';
+
+        if (!file) {
+            return;
+        }
+
+        if (!file.type.startsWith('image/')) {
+            this.showToast('请选择图片文件', 'error');
+            return;
+        }
+
+        if (file.size > 10 * 1024 * 1024) {
+            this.showToast('图片不能超过 10MB', 'error');
+            return;
+        }
+
+        this.uploadImageFileName.value = file.name;
+        this.uploadImageUrlInput.value = '';
+        this.uploadImagePreview.removeAttribute('src');
+        this.uploadImagePreviewPanel.classList.add('hidden');
+        this.uploadImageMarkdownOutput.value = '';
+        this.uploadImageStatus.textContent = `正在上传 ${file.name}...`;
+        this.copyImageMarkdownBtn.disabled = true;
+        this.insertImageMarkdownBtn.disabled = true;
+
+        const originalLabel = this.selectImageFileBtn.textContent;
+        this.selectImageFileBtn.textContent = '上传中...';
+        this.selectImageFileBtn.disabled = true;
+        this.selectImageFileBtn.classList.add('is-busy');
+
+        try {
+            const formData = new FormData();
+            formData.append('image', file);
+
+            const response = await fetch('/api/upload/image', {
+                method: 'POST',
+                body: formData
+            });
+            const data = await response.json();
+
+            if (!response.ok || !data.success) {
+                throw new Error(data.error || '图片上传失败');
+            }
+
+            this.uploadedImageUrl = data.image_url || '';
+            this.uploadedImageMarkdown = data.markdown || `![${data.alt || '图片'}](${this.uploadedImageUrl})`;
+            this.uploadImageUrlInput.value = this.uploadedImageUrl;
+            this.uploadImagePreview.src = this.uploadedImageUrl;
+            this.uploadImagePreviewPanel.classList.remove('hidden');
+            this.uploadImageMarkdownOutput.value = this.uploadedImageMarkdown;
+            this.uploadImageStatus.textContent = `${file.name} 上传成功。可以复制 Markdown，或直接插入到当前光标处。`;
+            this.copyImageMarkdownBtn.disabled = !this.uploadedImageMarkdown;
+            this.insertImageMarkdownBtn.disabled = !this.uploadedImageMarkdown;
+            this.showToast('图片上传成功', 'success');
+        } catch (error) {
+            console.error('图片上传失败:', error);
+            this.uploadImageStatus.textContent = error.message || '图片上传失败，请重试。';
+            this.showToast(error.message || '图片上传失败', 'error');
+        } finally {
+            this.selectImageFileBtn.textContent = originalLabel;
+            this.selectImageFileBtn.disabled = false;
+            this.selectImageFileBtn.classList.remove('is-busy');
+        }
+    }
+
+    async copyUploadedImageMarkdown() {
+        if (!this.uploadedImageMarkdown) {
+            return;
+        }
+
+        await navigator.clipboard.writeText(this.uploadedImageMarkdown);
+        this.showToast('Markdown 已复制', 'success');
+    }
+
+    insertUploadedImageMarkdown() {
+        if (!this.uploadedImageMarkdown) {
+            return;
+        }
+
+        this.insertTextAtCursor(this.uploadedImageMarkdown);
+        this.closeUploadImageModal();
+        this.showToast('Markdown 已插入到光标处', 'success');
     }
 
     resetShareState(message = '点击“分享”后将生成可访问页面和二维码。') {

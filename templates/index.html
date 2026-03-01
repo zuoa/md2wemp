@@ -146,6 +146,14 @@
                             </svg>
                             模板
                         </button>
+                        <button class="btn btn-outline btn-panel-action" id="uploadImageBtn" title="上传图片并生成 Markdown">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                <polyline points="17 8 12 3 7 8"></polyline>
+                                <line x1="12" y1="3" x2="12" y2="15"></line>
+                            </svg>
+                            上传图片
+                        </button>
                         <button class="btn-icon" id="clearBtn" title="清空内容">
                             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <polyline points="3 6 5 6 21 6"></polyline>
@@ -813,6 +821,60 @@
                             <button class="btn btn-primary" id="saveTemplateBtn" type="button">保存模板</button>
                             <button class="btn btn-outline" id="insertTemplateBtn" type="button">插入当前文章</button>
                             <button class="btn btn-outline" id="deleteTemplateBtn" type="button">删除模板</button>
+                        </div>
+                    </section>
+                </div>
+            </div>
+        </div>
+
+        <div class="share-overlay" id="uploadImageOverlay"></div>
+        <div class="share-modal upload-image-modal" id="uploadImageModal" role="dialog" aria-modal="true" aria-labelledby="uploadImageModalTitle">
+            <div class="share-modal-header">
+                <div>
+                    <p class="share-modal-kicker">Image Upload</p>
+                    <h2 id="uploadImageModalTitle">上传图片</h2>
+                    <p class="share-modal-caption">上传后生成可直接使用的 Markdown 图片语法，可选择复制或插入到当前光标处。</p>
+                </div>
+                <div class="share-modal-actions">
+                    <button class="btn btn-outline btn-panel-action" id="selectImageFileBtn" type="button">选择图片</button>
+                    <button class="btn-close" id="closeUploadImage" aria-label="关闭上传图片弹层">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="18" y1="6" x2="6" y2="18"></line>
+                            <line x1="6" y1="6" x2="18" y2="18"></line>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+            <div class="share-modal-body">
+                <div class="share-status-card">
+                    <span class="share-status-label">上传状态</span>
+                    <p id="uploadImageStatus" class="share-status-text">选择一张图片开始上传。支持 JPG、PNG、WebP、GIF，单张不超过 10MB。</p>
+                </div>
+                <div class="upload-image-workspace">
+                    <section class="share-card">
+                        <div class="share-card-head">
+                            <span>文件信息</span>
+                            <span class="share-card-caption">上传成功后会存储到当前站点的公开图片目录</span>
+                        </div>
+                        <input id="imageUploadInput" type="file" accept="image/*" hidden>
+                        <label class="field-label" for="uploadImageFileName">当前文件</label>
+                        <input id="uploadImageFileName" class="text-field" type="text" readonly placeholder="尚未选择文件">
+                        <label class="field-label" for="uploadImageUrlInput">图片地址</label>
+                        <input id="uploadImageUrlInput" class="text-field" type="text" readonly placeholder="上传成功后显示图片 URL">
+                        <div id="uploadImagePreviewPanel" class="generated-image-panel hidden">
+                            <img id="uploadImagePreview" alt="上传图片预览">
+                        </div>
+                    </section>
+                    <section class="share-card">
+                        <div class="share-card-head">
+                            <span>Markdown</span>
+                            <span class="share-card-caption">可复制后手动使用，也可直接插入编辑器</span>
+                        </div>
+                        <label class="field-label" for="uploadImageMarkdownOutput">图片语法</label>
+                        <textarea id="uploadImageMarkdownOutput" class="text-field wechat-textarea upload-image-markdown" rows="6" readonly placeholder="上传完成后显示 Markdown"></textarea>
+                        <div class="template-actions upload-image-actions">
+                            <button class="btn btn-outline" id="copyImageMarkdownBtn" type="button" disabled>复制 Markdown</button>
+                            <button class="btn btn-primary" id="insertImageMarkdownBtn" type="button" disabled>插入到光标处</button>
                         </div>
                     </section>
                 </div>

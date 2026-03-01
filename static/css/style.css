@@ -1125,6 +1125,10 @@ body.drawer-open {
     width: min(920px, calc(100vw - 28px));
 }
 
+.upload-image-modal {
+    width: min(760px, calc(100vw - 28px));
+}
+
 .share-modal.active,
 .wechat-modal.active {
     opacity: 1;
@@ -1133,6 +1137,12 @@ body.drawer-open {
 }
 
 .template-modal.active {
+    opacity: 1;
+    visibility: visible;
+    transform: translate(-50%, -50%) scale(1);
+}
+
+.upload-image-modal.active {
     opacity: 1;
     visibility: visible;
     transform: translate(-50%, -50%) scale(1);
@@ -1218,6 +1228,13 @@ body.drawer-open {
     margin-top: 18px;
 }
 
+.upload-image-workspace {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 18px;
+    margin-top: 18px;
+}
+
 .template-workspace {
     display: grid;
     grid-template-columns: 280px minmax(0, 1fr);
@@ -1243,6 +1260,19 @@ body.drawer-open {
     flex-direction: column;
     gap: 4px;
     margin-bottom: 14px;
+}
+
+.upload-image-markdown {
+    min-height: 152px;
+    resize: vertical;
+}
+
+.upload-image-actions {
+    margin-top: 14px;
+}
+
+.upload-image-workspace .generated-image-panel {
+    margin-top: 14px;
 }
 
 .share-card-head span:first-child {
@@ -2423,7 +2453,8 @@ body.drawer-open {
 
     .share-modal,
     .wechat-modal,
-    .template-modal {
+    .template-modal,
+    .upload-image-modal {
         width: min(100vw - 18px, 760px);
         max-height: min(88vh, 760px);
         border-radius: 24px;
@@ -2446,7 +2477,8 @@ body.drawer-open {
 
     .share-grid,
     .wechat-workspace,
-    .template-workspace {
+    .template-workspace,
+    .upload-image-workspace {
         grid-template-columns: 1fr;
     }
 

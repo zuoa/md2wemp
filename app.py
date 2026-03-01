@@ -85,6 +85,13 @@ SITE_DESCRIPTION = os.getenv(
     "MD2WE 是一个面向微信公众号排版的 Markdown 编辑器，支持主题排版、Mermaid、AI 辅助创作、分享页和公众号草稿推送。"
 ).strip()
 _ACTIVE_SHARE_STORAGE_DIR = None
+UPLOAD_IMAGE_MAX_BYTES = 10 * 1024 * 1024
+UPLOAD_IMAGE_ALLOWED_MIME_TYPES = {
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+    "image/gif"
+}
 
 
 class AIConfigCryptoError(ValueError):
@@ -203,6 +210,23 @@ def save_generated_image_bytes(image_bytes, mime_type):
     image_dir = get_active_share_image_dir()
     extension = guess_image_extension(mime_type)
     filename = f"ai-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:10]}{extension}"
+    image_path = image_dir / filename
+    image_path.write_bytes(image_bytes)
+    return filename
+
+
+def sanitize_markdown_image_alt(raw_name):
+    """根据文件名生成适合 Markdown 的 alt 文本。"""
+    alt_text = re.sub(r"[-_]+", " ", Path(raw_name or "").stem).strip()
+    alt_text = re.sub(r"\s+", " ", alt_text)
+    return alt_text[:80] or "图片"
+
+
+def save_uploaded_image_bytes(image_bytes, mime_type):
+    """保存用户上传图片并返回文件名。"""
+    image_dir = get_active_share_image_dir()
+    extension = guess_image_extension(mime_type)
+    filename = f"upload-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:10]}{extension}"
     image_path = image_dir / filename
     image_path.write_bytes(image_bytes)
     return filename
@@ -2660,6 +2684,56 @@ def api_convert():
         return jsonify({
             'success': False,
             'error': str(e)
+        }), 500
+
+
+@app.route('/api/upload/image', methods=['POST'])
+def api_upload_image():
+    """上传图片并返回可公开访问的 Markdown 图片地址。"""
+    try:
+        upload = request.files.get("image")
+        if upload is None:
+            return jsonify({
+                "success": False,
+                "error": "请先选择图片文件"
+            }), 400
+
+        mime_type = (upload.mimetype or "").strip().lower()
+        if mime_type not in UPLOAD_IMAGE_ALLOWED_MIME_TYPES:
+            return jsonify({
+                "success": False,
+                "error": "仅支持 JPG、PNG、WebP、GIF 图片"
+            }), 400
+
+        image_bytes = upload.read()
+        if not image_bytes:
+            return jsonify({
+                "success": False,
+                "error": "上传图片为空"
+            }), 400
+
+        if len(image_bytes) > UPLOAD_IMAGE_MAX_BYTES:
+            return jsonify({
+                "success": False,
+                "error": "图片不能超过 10MB"
+            }), 400
+
+        ensure_share_storage_dir()
+        filename = save_uploaded_image_bytes(image_bytes, mime_type)
+        image_url = build_public_url("share_image_file", filename=filename)
+        alt_text = sanitize_markdown_image_alt(upload.filename)
+
+        return jsonify({
+            "success": True,
+            "image_url": image_url,
+            "markdown": f"![{alt_text}]({image_url})",
+            "filename": filename,
+            "alt": alt_text
+        })
+    except Exception as exc:
+        return jsonify({
+            "success": False,
+            "error": str(exc)
         }), 500
 
 
