@@ -15,6 +15,7 @@ from pygments.formatters import HtmlFormatter
 from pygments.styles import get_style_by_name
 import re
 import json
+import logging
 import io
 import base64
 import mimetypes
@@ -95,6 +96,28 @@ UPLOAD_IMAGE_ALLOWED_MIME_TYPES = {
 }
 
 
+def configure_app_logging():
+    """将应用日志稳定输出到控制台。"""
+    formatter = logging.Formatter(
+        "[%(asctime)s] %(levelname)s in %(module)s: %(message)s"
+    )
+    stream_handler_exists = any(isinstance(handler, logging.StreamHandler) for handler in app.logger.handlers)
+    if not stream_handler_exists:
+        stream_handler = logging.StreamHandler()
+        stream_handler.setFormatter(formatter)
+        app.logger.addHandler(stream_handler)
+    else:
+        for handler in app.logger.handlers:
+            if isinstance(handler, logging.StreamHandler):
+                handler.setFormatter(formatter)
+
+    app.logger.setLevel(logging.INFO)
+    app.logger.propagate = False
+
+
+configure_app_logging()
+
+
 class AIConfigCryptoError(ValueError):
     """AI 参数加解密失败。"""
 
@@ -110,6 +133,39 @@ def inject_global_template_vars():
 def normalize_pem_text(raw_value):
     """将环境变量中的 PEM 文本恢复为标准格式。"""
     return (raw_value or "").strip().replace("\\n", "\n")
+
+
+def summarize_log_text(text, limit=160):
+    """压缩日志文本，避免输出整篇正文。"""
+    compact_text = re.sub(r"\s+", " ", (text or "").strip())
+    if len(compact_text) <= limit:
+        return compact_text
+    return f"{compact_text[:limit - 1]}…"
+
+
+@app.before_request
+def log_request_started():
+    """输出接口请求日志。"""
+    if request.path.startswith("/api/"):
+        app.logger.info(
+            "API request started path=%s method=%s remote=%s",
+            request.path,
+            request.method,
+            request.remote_addr
+        )
+
+
+@app.after_request
+def log_request_finished(response):
+    """输出接口响应日志。"""
+    if request.path.startswith("/api/"):
+        app.logger.info(
+            "API request finished path=%s method=%s status=%s",
+            request.path,
+            request.method,
+            response.status_code
+        )
+    return response
 
 
 def iter_ai_crypto_key_paths():
@@ -620,6 +676,39 @@ BACKGROUNDS = {
     "none": {"name": "无背景", "color": "transparent", "desc": "透明背景"}
 }
 
+ARTICLE_ILLUSTRATION_STYLES = {
+    "editorial": {
+        "label": "Editorial",
+        "prompt": "视觉风格：editorial illustration，杂志感，干净构图，层次清楚，信息表达优先。"
+    },
+    "notion": {
+        "label": "Notion",
+        "prompt": "视觉风格：Notion 风格知识插画，简洁几何形、柔和留白、信息组织清晰。"
+    },
+    "blueprint": {
+        "label": "Blueprint",
+        "prompt": "视觉风格：蓝图式技术插画，结构线框、系统感、专业克制，适合架构和流程。"
+    },
+    "warm": {
+        "label": "Warm",
+        "prompt": "视觉风格：温暖叙事插画，色调柔和，人物和场景自然，但避免装饰性过强。"
+    },
+    "minimal": {
+        "label": "Minimal",
+        "prompt": "视觉风格：极简概念插画，元素少而准，版面克制，强调核心关系。"
+    },
+    "watercolor": {
+        "label": "Watercolor",
+        "prompt": "视觉风格：淡彩水彩插画，轻质感，柔和渐变，适合人文和场景表达。"
+    },
+    "scientific": {
+        "label": "Scientific",
+        "prompt": "视觉风格：科学信息图插画，理性、精确、可视化导向，适合原理和对比。"
+    }
+}
+
+MAX_ARTICLE_ILLUSTRATIONS = 5
+
 
 def find_first_heading(md_text):
     """提取 Markdown 中的第一个标题。"""
@@ -654,6 +743,434 @@ def build_article_context(md_text, limit=2200):
         "plain_text": plain_text,
         "excerpt": excerpt
     }
+
+
+def get_article_illustration_style_options():
+    """返回前端可用的配图风格选项。"""
+    return [
+        {
+            "key": key,
+            "label": value["label"]
+        }
+        for key, value in ARTICLE_ILLUSTRATION_STYLES.items()
+    ]
+
+
+def normalize_article_illustration_style(style_key):
+    """规范化一键配图使用的画风。"""
+    normalized_key = (style_key or "").strip().lower()
+    if normalized_key not in ARTICLE_ILLUSTRATION_STYLES:
+        normalized_key = "editorial"
+    return normalized_key, ARTICLE_ILLUSTRATION_STYLES[normalized_key]
+
+
+def parse_markdown_blocks(md_text):
+    """按块解析 Markdown，保留每个块在原文中的行范围。"""
+    normalized_text = (md_text or "").replace("\r\n", "\n").replace("\r", "\n")
+    lines = normalized_text.split("\n")
+    blocks = []
+    block_start = None
+    block_lines = []
+    in_fence = False
+    fence_char = ""
+    fence_length = 0
+
+    def close_block(end_line):
+        nonlocal block_start, block_lines
+        if block_start is None:
+            return
+        blocks.append({
+            "block_index": len(blocks) + 1,
+            "start_line": block_start,
+            "end_line": end_line,
+            "content": "\n".join(block_lines)
+        })
+        block_start = None
+        block_lines = []
+
+    for line_index, line in enumerate(lines):
+        stripped = line.strip()
+        fence_match = re.match(r"^\s*(```+|~~~+)", line)
+
+        if block_start is None:
+            if not stripped:
+                continue
+            block_start = line_index
+            block_lines = [line]
+            if fence_match:
+                fence_token = fence_match.group(1)
+                in_fence = True
+                fence_char = fence_token[0]
+                fence_length = len(fence_token)
+            continue
+
+        if in_fence:
+            block_lines.append(line)
+            if fence_match:
+                fence_token = fence_match.group(1)
+                if fence_token[0] == fence_char and len(fence_token) >= fence_length:
+                    in_fence = False
+            continue
+
+        if not stripped:
+            close_block(line_index - 1)
+            continue
+
+        block_lines.append(line)
+        if fence_match:
+            fence_token = fence_match.group(1)
+            in_fence = True
+            fence_char = fence_token[0]
+            fence_length = len(fence_token)
+
+    close_block(len(lines) - 1)
+    return blocks
+
+
+def get_markdown_block_kind(block_text):
+    """粗略识别 Markdown 块类型，用于过滤不适合配图的内容。"""
+    stripped = (block_text or "").strip()
+    if not stripped:
+        return "empty"
+    if len(stripped.splitlines()) == 1 and re.match(r"^\s{0,3}#{1,6}\s+.+$", stripped):
+        return "heading"
+    if re.match(r"^\s*(```+|~~~+)", stripped):
+        return "fence"
+    if re.search(r"!\[[^\]]*\]\([^)]+\)", stripped):
+        return "image"
+    if re.match(r"^\s*([-*_])(?:\s*\1){2,}\s*$", stripped):
+        return "divider"
+    if stripped.startswith("|") and "\n" in stripped:
+        return "table"
+    if re.match(r"^\s*<[^>]+>", stripped):
+        return "html"
+    return "text"
+
+
+def summarize_markdown_block(block_text, limit=220):
+    """提取块的纯文本摘要，控制提示词长度。"""
+    summary = re.sub(r"\s+", " ", extract_plain_text_from_markdown(block_text))
+    if len(summary) <= limit:
+        return summary
+    return f"{summary[:limit - 1].rstrip()}…"
+
+
+def is_illustratable_markdown_block(block_text):
+    """判断一个 Markdown 块是否适合作为一键配图候选。"""
+    if get_markdown_block_kind(block_text) in {"heading", "fence", "image", "divider", "table", "html", "empty"}:
+        return False
+    return len(summarize_markdown_block(block_text, limit=320)) >= 28
+
+
+def extract_json_payload_from_text(text):
+    """从模型返回文本中提取 JSON。"""
+    cleaned = (text or "").strip()
+    cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\s*```$", "", cleaned)
+
+    candidate_positions = [index for index in [cleaned.find("{"), cleaned.find("[")] if index != -1]
+    if not candidate_positions:
+        raise RuntimeError("AI 未返回可解析的 JSON 结果")
+
+    start_index = min(candidate_positions)
+    end_index = max(cleaned.rfind("}"), cleaned.rfind("]"))
+    if end_index < start_index:
+        raise RuntimeError("AI 返回的 JSON 结构不完整")
+
+    return json.loads(cleaned[start_index:end_index + 1])
+
+
+def sanitize_article_illustration_alt_text(raw_text, fallback_text=""):
+    """清洗图片 alt 文本，避免过长或过虚。"""
+    alt_text = normalize_generated_text(raw_text)
+    alt_text = alt_text.strip("\"'“”‘’")
+    alt_text = re.sub(r"[，,。；;：:]+$", "", alt_text)
+    if count_chinese_chars(alt_text) < 2:
+        fallback_plain_text = re.sub(r"\s+", "", extract_plain_text_from_markdown(fallback_text))
+        alt_text = fallback_plain_text[:14] or "AI 配图"
+    return alt_text[:24]
+
+
+def normalize_article_illustration_plan(raw_plan, candidate_map):
+    """验证并清洗模型返回的插图计划。"""
+    plan_items = raw_plan
+    if isinstance(raw_plan, dict):
+        plan_items = raw_plan.get("plan") or raw_plan.get("items") or raw_plan.get("illustrations") or []
+
+    if not isinstance(plan_items, list):
+        raise RuntimeError("AI 返回的插图计划格式错误")
+
+    normalized_items = []
+    seen_block_indices = set()
+
+    for item in plan_items:
+        if not isinstance(item, dict):
+            continue
+
+        block_index = item.get("block_index", item.get("index"))
+        try:
+            block_index = int(block_index)
+        except (TypeError, ValueError):
+            continue
+
+        if block_index in seen_block_indices or block_index not in candidate_map:
+            continue
+
+        prompt_text = normalize_generated_text(
+            item.get("prompt") or item.get("description") or item.get("scene") or ""
+        )
+        if len(prompt_text) < 12:
+            continue
+
+        normalized_items.append({
+            "block_index": block_index,
+            "alt_text": sanitize_article_illustration_alt_text(item.get("alt_text"), candidate_map[block_index]["content"]),
+            "prompt": prompt_text
+        })
+        seen_block_indices.add(block_index)
+
+        if len(normalized_items) >= MAX_ARTICLE_ILLUSTRATIONS:
+            break
+
+    if not normalized_items:
+        raise RuntimeError("AI 未返回可用的插图计划")
+
+    return normalized_items
+
+
+def repair_article_illustration_plan(plan_text, candidate_map, ai_config=None):
+    """当模型首轮没有返回合法 JSON 时，要求其仅修复结构。"""
+    candidate_ids = sorted(candidate_map.keys())
+    repair_system_prompt = (
+        "你是一名 JSON 修复助手。"
+        "你会把一段不规范的插图计划修复为严格合法的 JSON。"
+        "只输出 JSON，不要解释，不要 Markdown 代码块。"
+        "格式固定为："
+        "{\"plan\":[{\"block_index\":3,\"alt_text\":\"简短中文短语\",\"prompt\":\"一段中文生图描述\"}]}"
+    )
+    repair_user_prompt = (
+        f"可用 block_index 只有这些：{candidate_ids}\n"
+        f"最多保留 {MAX_ARTICLE_ILLUSTRATIONS} 个。\n"
+        "请删除无效项、重复项、空项，并修复成合法 JSON。\n\n"
+        "原始输出如下：\n"
+        f"{plan_text}"
+    )
+    repaired_text = call_openai_text(
+        repair_system_prompt,
+        repair_user_prompt,
+        max_output_tokens=2200,
+        retry_max_output_tokens=3200,
+        ai_config=ai_config
+    )
+    raw_plan = extract_json_payload_from_text(repaired_text)
+    return normalize_article_illustration_plan(raw_plan, candidate_map)
+
+
+def fallback_article_illustration_plan(candidates, article_context, style_config, ai_config=None):
+    """当结构化计划仍失败时，降级为从核心块中挑选并逐块生成描述。"""
+    prioritized_candidates = sorted(
+        candidates,
+        key=lambda item: len(item.get("preview", "")),
+        reverse=True
+    )[:MAX_ARTICLE_ILLUSTRATIONS]
+    plan_items = []
+
+    for candidate in prioritized_candidates:
+        system_prompt = (
+            "你是一名中文知识文章插画编辑。"
+            "请只为当前段落生成一个适合 16:9 插画的中文画面描述。"
+            "返回严格 JSON，不要解释："
+            "{\"alt_text\":\"简短中文短语\",\"prompt\":\"一段中文生图描述\"}"
+        )
+        user_prompt = (
+            f"文章标题：{article_context['title']}\n"
+            f"整篇背景：{article_context['excerpt']}\n"
+            f"指定画风：{style_config['label']}。{style_config['prompt']}\n"
+            f"当前段落：{candidate['preview']}\n"
+            "要求：突出这一段真正需要可视化的核心概念，不要把修辞字面化，不要包含文字或 Logo。"
+        )
+        description_text = call_openai_text(
+            system_prompt,
+            user_prompt,
+            max_output_tokens=800,
+            retry_max_output_tokens=1200,
+            ai_config=ai_config
+        )
+        try:
+            description_data = extract_json_payload_from_text(description_text)
+        except Exception:
+            description_data = {
+                "alt_text": candidate["preview"][:12],
+                "prompt": normalize_generated_text(description_text)
+            }
+
+        prompt_text = normalize_generated_text(description_data.get("prompt") if isinstance(description_data, dict) else "")
+        if len(prompt_text) < 12:
+            continue
+
+        plan_items.append({
+            "block_index": candidate["block_index"],
+            "alt_text": sanitize_article_illustration_alt_text(
+                description_data.get("alt_text") if isinstance(description_data, dict) else "",
+                candidate["content"]
+            ),
+            "prompt": prompt_text
+        })
+
+    if not plan_items:
+        raise RuntimeError("AI 未能生成可用的一键配图计划")
+
+    return plan_items
+
+
+def build_article_illustration_candidates(md_text):
+    """提取一键配图可选的正文块。"""
+    blocks = parse_markdown_blocks(md_text)
+    candidates = []
+
+    for block in blocks:
+        if not is_illustratable_markdown_block(block["content"]):
+            continue
+        candidates.append({
+            **block,
+            "preview": summarize_markdown_block(block["content"], limit=220)
+        })
+
+    return blocks, candidates
+
+
+def generate_article_illustration_plan(md_text, style_key, ai_config=None):
+    """让文本模型只选择核心段落，并为每段生成图片描述。"""
+    style_key, style_config = normalize_article_illustration_style(style_key)
+    article_context = build_article_context(md_text, limit=2600)
+    blocks, candidates = build_article_illustration_candidates(md_text)
+
+    if not candidates:
+        raise RuntimeError("正文中没有找到适合自动配图的核心段落")
+
+    app.logger.info(
+        "Illustration planning started title=%s style=%s total_blocks=%s candidate_blocks=%s",
+        article_context["title"],
+        style_key,
+        len(blocks),
+        len(candidates)
+    )
+
+    candidate_map = {candidate["block_index"]: candidate for candidate in candidates}
+    candidate_sections = []
+    for candidate in candidates[:36]:
+        candidate_sections.append(
+            f"[候选块 {candidate['block_index']}]\n"
+            f"{candidate['preview']}"
+        )
+
+    system_prompt = (
+        "你是一名中文知识文章的插画策划编辑。"
+        f"你只能从候选块中挑选最值得配图的核心段落，数量不得超过 {MAX_ARTICLE_ILLUSTRATIONS} 个，宁缺毋滥。"
+        "优先选择需要可视化解释的概念、结构、流程、对比、场景或关键转折。"
+        "不要选择寒暄、铺垫、重复论证、纯总结、纯标题、代码、表格、已有图片。"
+        "不要把比喻、修辞或口号字面化。"
+        "必须只返回 JSON，不要解释，不要 Markdown 代码块。"
+        "格式固定为："
+        "{\"plan\":[{\"block_index\":3,\"alt_text\":\"简短中文短语\",\"prompt\":\"一段中文生图描述\"}]}"
+        "其中 block_index 必须来自候选块编号；alt_text 保持简短准确；prompt 必须适合 16:9 知识型插画，且不能包含文字、Logo、水印、边框或界面按钮。"
+    )
+    user_prompt = (
+        f"文章标题：{article_context['title']}\n\n"
+        f"文章整体摘要：\n{article_context['excerpt']}\n\n"
+        f"指定画风：{style_config['label']}。{style_config['prompt']}\n\n"
+        "请只选真正值得配图的核心段落，整篇不要超过 5 个。\n\n"
+        "候选块列表：\n"
+        f"{chr(10).join(candidate_sections)}"
+    )
+
+    plan_text = call_openai_text(
+        system_prompt,
+        user_prompt,
+        max_output_tokens=2200,
+        retry_max_output_tokens=3200,
+        ai_config=ai_config
+    )
+    try:
+        raw_plan = extract_json_payload_from_text(plan_text)
+        plan_items = normalize_article_illustration_plan(raw_plan, candidate_map)
+    except Exception:
+        app.logger.warning("Illustration planning returned non-standard JSON, attempting repair")
+        try:
+            plan_items = repair_article_illustration_plan(plan_text, candidate_map, ai_config=ai_config)
+        except Exception:
+            app.logger.warning("Illustration plan repair failed, falling back to per-block generation")
+            plan_items = fallback_article_illustration_plan(
+                candidates,
+                article_context,
+                style_config,
+                ai_config=ai_config
+            )
+
+    app.logger.info(
+        "Illustration planning finished title=%s selected_blocks=%s block_indexes=%s",
+        article_context["title"],
+        len(plan_items),
+        [item["block_index"] for item in plan_items]
+    )
+
+    return {
+        "style_key": style_key,
+        "style_config": style_config,
+        "blocks": blocks,
+        "candidate_map": candidate_map,
+        "plan_items": plan_items,
+        "article_context": article_context
+    }
+
+
+def build_article_block_image_prompt(article_context, block_text, visual_goal, style_config):
+    """将段落与画风整理成单张图片生成提示词。"""
+    block_summary = summarize_markdown_block(block_text, limit=1200)
+    prompt_parts = [
+        "请为一篇中文知识文章中的核心段落生成一张横版插画。",
+        style_config["prompt"],
+        "画面目标：帮助读者理解该段落的核心意思，而不是做装饰性头图。",
+        "输出要求：16:9 横图，不包含任何文字、Logo、水印、边框、按钮、聊天气泡或界面截图。",
+        f"整篇文章标题：{article_context['title']}",
+        f"整篇文章背景：{article_context['excerpt']}",
+        f"当前段落内容：{block_summary}",
+        f"这一段要表达的画面重点：{visual_goal}"
+    ]
+    return "\n".join(prompt_parts)
+
+
+def insert_images_into_markdown_blocks(md_text, blocks, generated_segments):
+    """按块尾行把 Markdown 图片语法精确插回原文。"""
+    normalized_text = (md_text or "").replace("\r\n", "\n").replace("\r", "\n")
+    lines = normalized_text.split("\n")
+    block_map = {block["block_index"]: block for block in blocks}
+    insertions = {}
+
+    for segment in generated_segments:
+        block = block_map.get(segment["block_index"])
+        if not block:
+            continue
+        insertions.setdefault(block["end_line"], []).append(
+            f"![{segment['alt_text']}]({segment['image_url']})"
+        )
+
+    if not insertions:
+        return normalized_text
+
+    result_lines = []
+    for line_index, line in enumerate(lines):
+        result_lines.append(line)
+        snippets = insertions.get(line_index) or []
+        for snippet in snippets:
+            if result_lines and result_lines[-1].strip():
+                result_lines.append("")
+            result_lines.append(snippet)
+            next_line = lines[line_index + 1] if line_index + 1 < len(lines) else None
+            if next_line is not None and next_line.strip():
+                result_lines.append("")
+
+    return "\n".join(result_lines)
 
 
 def trim_meta_text(text, limit=160):
@@ -1428,6 +1945,13 @@ def openai_api_request(path, payload, timeout=60, ai_config=None, capability="te
         raise RuntimeError("未配置 OPENAI_API_KEY，AI 功能不可用")
 
     url = f"{target_config['base_url']}{path}"
+    app.logger.info(
+        "AI request capability=%s path=%s model=%s base_url=%s",
+        capability,
+        path,
+        target_config["model"],
+        target_config["base_url"]
+    )
     data = json.dumps(payload).encode("utf-8")
     headers = {
         "Authorization": f"Bearer {api_key}",
@@ -1437,7 +1961,13 @@ def openai_api_request(path, payload, timeout=60, ai_config=None, capability="te
 
     try:
         with urllib.request.urlopen(req, timeout=timeout, context=ssl.create_default_context()) as response:
-            return json.loads(response.read().decode("utf-8"))
+            response_json = json.loads(response.read().decode("utf-8"))
+            app.logger.info(
+                "AI request completed capability=%s path=%s",
+                capability,
+                path
+            )
+            return response_json
     except HTTPError as exc:
         body = exc.read().decode("utf-8", errors="ignore")
         message = body
@@ -1446,8 +1976,21 @@ def openai_api_request(path, payload, timeout=60, ai_config=None, capability="te
             message = error_data.get("error", {}).get("message") or body
         except json.JSONDecodeError:
             pass
+        app.logger.error(
+            "AI request failed capability=%s path=%s status=%s message=%s",
+            capability,
+            path,
+            exc.code,
+            summarize_log_text(message, limit=240)
+        )
         raise RuntimeError(f"OpenAI 请求失败: {message}") from exc
     except URLError as exc:
+        app.logger.error(
+            "AI network request failed capability=%s path=%s reason=%s",
+            capability,
+            path,
+            exc.reason
+        )
         raise RuntimeError(f"OpenAI 网络请求失败: {exc.reason}") from exc
 
 
@@ -1789,21 +2332,9 @@ def generate_ai_image_with_gemini_sdk(prompt_text, model_name, api_key):
     return extract_generated_image_from_gemini_response(response)
 
 
-def generate_ai_image(md_text, focus_prompt="", ai_config=None):
-    """为文章生成配图。"""
-    context = build_article_context(md_text, limit=2600)
+def generate_ai_image_from_prompt(prompt_text, ai_config=None):
+    """根据已整理好的提示词生成单张图片。"""
     config = sanitize_ai_config(ai_config)
-    prompt_parts = [
-        "请为一篇中文文章生成一张横版头图插画。",
-        "风格要求：现代 editorial illustration，干净、有层次、适合知识型文章。",
-        "输出要求：16:9 横图，不包含任何文字、Logo、水印、边框、按钮或界面元素。",
-        f"文章标题：{context['title']}",
-        f"文章核心内容：{context['excerpt']}"
-    ]
-    if focus_prompt:
-        prompt_parts.append(f"额外侧重点：{focus_prompt.strip()}")
-
-    prompt_text = "\n".join(prompt_parts)
     image_model = config["image"]["model"]
 
     if is_gemini_native_image_model(image_model):
@@ -1833,6 +2364,85 @@ def generate_ai_image(md_text, focus_prompt="", ai_config=None):
     return {
         "image_url": build_public_url("share_image_file", filename=filename),
         "revised_prompt": revised_prompt
+    }
+
+
+def generate_ai_image(md_text, focus_prompt="", ai_config=None):
+    """为文章生成配图。"""
+    context = build_article_context(md_text, limit=2600)
+    prompt_parts = [
+        "请为一篇中文文章生成一张横版头图插画。",
+        "风格要求：现代 editorial illustration，干净、有层次、适合知识型文章。",
+        "输出要求：16:9 横图，不包含任何文字、Logo、水印、边框、按钮或界面元素。",
+        f"文章标题：{context['title']}",
+        f"文章核心内容：{context['excerpt']}"
+    ]
+    if focus_prompt:
+        prompt_parts.append(f"额外侧重点：{focus_prompt.strip()}")
+
+    return generate_ai_image_from_prompt("\n".join(prompt_parts), ai_config=ai_config)
+
+
+def illustrate_article_with_ai(md_text, style_key="editorial", ai_config=None):
+    """一键为文章核心段落配图，并将 Markdown 图片语法插回原文。"""
+    if not has_ai_capability(ai_config, capability="text") or not has_ai_capability(ai_config, capability="image"):
+        raise RuntimeError("一键配图需要同时配置文本模型和图片模型")
+
+    plan_result = generate_article_illustration_plan(md_text, style_key=style_key, ai_config=ai_config)
+    generated_segments = []
+    app.logger.info(
+        "Illustration generation started title=%s style=%s segments=%s",
+        plan_result["article_context"]["title"],
+        plan_result["style_key"],
+        len(plan_result["plan_items"])
+    )
+
+    for plan_item in plan_result["plan_items"]:
+        block = plan_result["candidate_map"][plan_item["block_index"]]
+        app.logger.info(
+            "Generating illustration block_index=%s alt=%s preview=%s",
+            plan_item["block_index"],
+            plan_item["alt_text"],
+            summarize_log_text(block["content"], limit=120)
+        )
+        prompt_text = build_article_block_image_prompt(
+            plan_result["article_context"],
+            block["content"],
+            plan_item["prompt"],
+            plan_result["style_config"]
+        )
+        image_result = generate_ai_image_from_prompt(prompt_text, ai_config=ai_config)
+        generated_segments.append({
+            "block_index": plan_item["block_index"],
+            "alt_text": plan_item["alt_text"],
+            "image_url": image_result["image_url"],
+            "revised_prompt": image_result.get("revised_prompt", ""),
+            "block_preview": summarize_markdown_block(block["content"], limit=80)
+        })
+        app.logger.info(
+            "Illustration generated block_index=%s image_url=%s",
+            plan_item["block_index"],
+            image_result["image_url"]
+        )
+
+    updated_markdown = insert_images_into_markdown_blocks(
+        md_text,
+        plan_result["blocks"],
+        generated_segments
+    )
+    app.logger.info(
+        "Illustration generation finished title=%s inserted_segments=%s",
+        plan_result["article_context"]["title"],
+        len(generated_segments)
+    )
+
+    return {
+        "markdown": updated_markdown,
+        "segments": generated_segments,
+        "style": {
+            "key": plan_result["style_key"],
+            "label": plan_result["style_config"]["label"]
+        }
     }
 
 
@@ -2548,6 +3158,7 @@ def index():
                                   'model': os.getenv("OPENAI_IMAGE_TOOL_MODEL", "gemini-2.5-flash-image")
                               }
                           },
+                          ai_illustration_styles=get_article_illustration_style_options(),
                           ai_crypto=get_ai_crypto_public_config(),
                           site_name=SITE_NAME,
                           seo_title=f"{SITE_NAME} - Markdown 转微信公众号工具",
@@ -2888,6 +3499,7 @@ def api_ai_title_suggestions():
             'error': str(exc)
         }), 400
     except Exception as e:
+        app.logger.exception("Title suggestions failed")
         return jsonify({
             'success': False,
             'error': str(e)
@@ -2951,6 +3563,49 @@ def api_ai_generate_image():
         }), 500
 
 
+@app.route('/api/ai/illustrate-article', methods=['POST'])
+def api_ai_illustrate_article():
+    """一键为文章核心段落配图。"""
+    try:
+        data = get_ai_request_data()
+        md_text = data.get('markdown', '')
+        style_key = data.get('style', 'editorial')
+        ai_config = data.get('ai_config') or {}
+        app.logger.info(
+            "Illustrate article API called style=%s markdown_preview=%s",
+            style_key,
+            summarize_log_text(md_text, limit=180)
+        )
+        if not md_text.strip():
+            return jsonify({'success': False, 'error': '请先输入文章内容'}), 400
+        if not has_ai_capability(ai_config, capability='text') or not has_ai_capability(ai_config, capability='image'):
+            return jsonify({'success': False, 'error': '一键配图需要同时配置文本模型和图片模型'}), 400
+
+        result = illustrate_article_with_ai(md_text, style_key=style_key, ai_config=ai_config)
+        app.logger.info(
+            "Illustrate article API succeeded style=%s inserted_segments=%s",
+            style_key,
+            len(result['segments'])
+        )
+        return jsonify({
+            'success': True,
+            'markdown': result['markdown'],
+            'segments': result['segments'],
+            'style': result['style']
+        })
+    except AIConfigCryptoError as exc:
+        return jsonify({
+            'success': False,
+            'error': str(exc)
+        }), 400
+    except Exception as e:
+        app.logger.exception("Illustrate article failed")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
 @app.route('/api/themes', methods=['GET'])
 def api_themes():
     """API接口：获取所有主题"""
@@ -2970,7 +3625,8 @@ def api_themes():
                 'base_url': os.getenv("OPENAI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta/openai"),
                 'model': os.getenv("OPENAI_IMAGE_TOOL_MODEL", "gemini-2.5-flash-image")
             }
-        }
+        },
+        'ai_illustration_styles': get_article_illustration_style_options()
     })
 
 

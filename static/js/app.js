@@ -22,6 +22,7 @@ class MD2WE {
             aiImageBaseUrl: '',
             aiImageModel: '',
             aiImageApiKey: '',
+            articleIllustrationStyle: 'editorial',
             titleFocusPrompt: '',
             summaryFocusPrompt: '',
             imageFocusPrompt: '',
@@ -227,6 +228,9 @@ class MD2WE {
         this.imageFocusInput = document.getElementById('imageFocusInput');
         this.titleSuggestionsList = document.getElementById('titleSuggestionsList');
         this.summaryOutput = document.getElementById('summaryOutput');
+        this.articleIllustrationStyleSelect = document.getElementById('articleIllustrationStyleSelect');
+        this.illustrateArticleBtn = document.getElementById('illustrateArticleBtn');
+        this.articleIllustrationResult = document.getElementById('articleIllustrationResult');
         this.generatedImageState = document.getElementById('generatedImageState');
         this.generatedImagePanel = document.getElementById('generatedImagePanel');
         this.generatedImagePreview = document.getElementById('generatedImagePreview');
@@ -393,6 +397,10 @@ class MD2WE {
         this.titleFocusInput.addEventListener('input', () => this.saveAssistantPrompts());
         this.summaryFocusInput.addEventListener('input', () => this.saveAssistantPrompts());
         this.imageFocusInput.addEventListener('input', () => this.saveAssistantPrompts());
+        this.articleIllustrationStyleSelect.addEventListener('change', () => this.saveArticleIllustrationStyle());
+        this.illustrateArticleBtn.addEventListener('click', () => {
+            this.runAIAction(this.illustrateArticleBtn, '配图中...', 'both', () => this.illustrateArticleWithAI());
+        });
         this.applyTitleSuggestionBtn.addEventListener('click', () => this.applySelectedTitleSuggestion());
         this.copyTitleSuggestionBtn.addEventListener('click', () => this.copySelectedTitleSuggestion());
         this.exportImageBtn.addEventListener('click', () => this.exportLongImage());
@@ -2377,7 +2385,9 @@ ${html}
 
     async runAIAction(button, busyText, capability, action) {
         if (!this.hasAICapability(capability)) {
-            const capabilityLabel = capability === 'image' ? '图片 AI' : '文本 AI';
+            const capabilityLabel = capability === 'image'
+                ? '图片 AI'
+                : (capability === 'both' ? '文本和图片 AI' : '文本 AI');
             this.showToast(`未配置${capabilityLabel}，AI 功能不可用`, 'error');
             return;
         }
@@ -2531,6 +2541,63 @@ ${html}
         this.showToast('配图已生成', 'success');
     }
 
+    async illustrateArticleWithAI() {
+        this.articleIllustrationResult.className = 'assistant-card-body muted';
+        this.articleIllustrationResult.textContent = '正在提取核心段落并批量生成配图，请稍候...';
+
+        const data = await this.callAIEndpoint('/api/ai/illustrate-article', {
+            markdown: this.editor.value,
+            style: this.articleIllustrationStyleSelect.value || this.getDefaultIllustrationStyle()
+        });
+
+        this.editor.value = data.markdown || this.editor.value;
+        this.saveContent();
+        this.invalidateShareState();
+        this.updateStats();
+        this.updateEditorSyntax();
+        this.updatePreview();
+        this.renderArticleIllustrationResult(data);
+        this.showToast(`已插入 ${data.segments?.length || 0} 张配图`, 'success');
+    }
+
+    renderArticleIllustrationResult(data) {
+        const segments = Array.isArray(data?.segments) ? data.segments : [];
+        if (!segments.length) {
+            this.articleIllustrationResult.className = 'assistant-card-body muted';
+            this.articleIllustrationResult.textContent = '这次没有识别到适合自动配图的核心段落。';
+            return;
+        }
+
+        const wrapper = document.createElement('div');
+        wrapper.className = 'illustration-result-list';
+
+        const summary = document.createElement('div');
+        summary.className = 'illustration-result-summary';
+        summary.textContent = `已按 ${data.style?.label || '当前画风'} 自动插入 ${segments.length} 张配图。只保留核心段落，最多 5 个。`;
+        wrapper.appendChild(summary);
+
+        segments.forEach((segment) => {
+            const item = document.createElement('div');
+            item.className = 'illustration-result-item';
+
+            const meta = document.createElement('div');
+            meta.className = 'illustration-result-meta';
+            meta.textContent = `段落 ${segment.block_index} · ${segment.alt_text || 'AI 配图'}`;
+
+            const preview = document.createElement('div');
+            preview.className = 'illustration-result-preview';
+            preview.textContent = segment.block_preview || '';
+
+            item.appendChild(meta);
+            item.appendChild(preview);
+            wrapper.appendChild(item);
+        });
+
+        this.articleIllustrationResult.className = 'assistant-card-body';
+        this.articleIllustrationResult.innerHTML = '';
+        this.articleIllustrationResult.appendChild(wrapper);
+    }
+
     insertGeneratedImage() {
         if (!this.generatedImageDataUrl) {
             return;
@@ -2583,6 +2650,7 @@ ${html}
     updateAssistantAvailability() {
         this.suggestTitlesBtn.disabled = !this.hasAICapability('text');
         this.generateSummaryBtn.disabled = !this.hasAICapability('text');
+        this.illustrateArticleBtn.disabled = !this.hasAICapability('both');
         this.generateImageBtn.disabled = !this.hasAICapability('image');
 
         this.applyTitleSuggestionBtn.disabled = !this.selectedTitleSuggestion;
@@ -2599,6 +2667,8 @@ ${html}
         this.titleSuggestionsList.textContent = '生成后将在这里显示 3-5 个备选标题。';
         this.summaryOutput.className = 'assistant-card-body muted';
         this.summaryOutput.textContent = '点击“一键摘要”生成适合文章导语、封面说明或摘要栏的文案。';
+        this.articleIllustrationResult.className = 'assistant-card-body muted';
+        this.articleIllustrationResult.textContent = '只抽取核心段落，最多 5 个，生成后会直接插入正文。';
         this.generatedImageState.className = 'assistant-card-body muted';
         this.generatedImageState.textContent = '尚未生成配图。';
         this.generatedImagePanel.classList.add('hidden');
@@ -3016,12 +3086,22 @@ gantt
         this.titleFocusInput.value = this.currentSettings.titleFocusPrompt || '';
         this.summaryFocusInput.value = this.currentSettings.summaryFocusPrompt || '';
         this.imageFocusInput.value = this.currentSettings.imageFocusPrompt || '';
+        this.articleIllustrationStyleSelect.value = this.currentSettings.articleIllustrationStyle || this.getDefaultIllustrationStyle();
     }
 
     saveAssistantPrompts() {
         this.currentSettings.titleFocusPrompt = this.titleFocusInput.value.trim();
         this.currentSettings.summaryFocusPrompt = this.summaryFocusInput.value.trim();
         this.currentSettings.imageFocusPrompt = this.imageFocusInput.value.trim();
+        this.saveSettings();
+    }
+
+    getDefaultIllustrationStyle() {
+        return CONFIG.aiIllustrationStyles?.[0]?.key || 'editorial';
+    }
+
+    saveArticleIllustrationStyle() {
+        this.currentSettings.articleIllustrationStyle = this.articleIllustrationStyleSelect.value || this.getDefaultIllustrationStyle();
         this.saveSettings();
     }
 
@@ -3091,6 +3171,9 @@ gantt
         }
         if (capability === 'image') {
             return hasImage;
+        }
+        if (capability === 'both') {
+            return hasText && hasImage;
         }
         return hasText || hasImage;
     }

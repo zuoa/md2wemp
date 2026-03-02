@@ -132,6 +132,14 @@
                         Markdown
                     </span>
                     <div class="panel-actions">
+                        <button class="btn btn-outline btn-panel-action" id="illustrateArticleBtn" title="一键为核心段落配图">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <rect x="3" y="3" width="18" height="14" rx="2"></rect>
+                                <path d="M7 13l3-3 3 3 4-5 3 4"></path>
+                                <circle cx="8.5" cy="8.5" r="1.2"></circle>
+                            </svg>
+                            一键配图
+                        </button>
                         <button class="btn btn-outline btn-panel-action" id="insertReadingInfoBtn" title="插入阅读信息">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <path d="M12 6v6l4 2"></path>
@@ -552,6 +560,27 @@
                         <section class="assistant-card assistant-card-image assistant-card-wide">
                             <div class="assistant-card-head assistant-card-head-stacked">
                                 <div class="assistant-card-meta">
+                                    <span>一键配图设置</span>
+                                    <span class="assistant-caption">按钮已放到编辑器上方操作栏，这里只负责选择画风和查看结果</span>
+                                </div>
+                            </div>
+                            <div class="assistant-image-prompt-row assistant-image-prompt-row-stacked">
+                                <div class="assistant-field">
+                                    <label class="field-label" for="articleIllustrationStyleSelect">画风</label>
+                                    <select id="articleIllustrationStyleSelect" class="text-field">
+                                        {% for style in ai_illustration_styles %}
+                                        <option value="{{ style.key }}">{{ style.label }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                            </div>
+                            <div id="articleIllustrationResult" class="assistant-card-body muted">
+                                需要同时配置文本模型和图片模型。执行后会自动挑选核心段落，并把图片 Markdown 精确插入原文。
+                            </div>
+                        </section>
+                        <section class="assistant-card assistant-card-image assistant-card-wide">
+                            <div class="assistant-card-head assistant-card-head-stacked">
+                                <div class="assistant-card-meta">
                                     <span>AI 配图</span>
                                     <span class="assistant-caption">默认生成 16:9 头图，可直接插入文首或文末</span>
                                 </div>
@@ -895,6 +924,7 @@
             qrEnabled: {{ qr_enabled | tojson }},
             aiEnabled: {{ ai_enabled | tojson }},
             aiDefaults: {{ ai_defaults | tojson }},
+            aiIllustrationStyles: {{ ai_illustration_styles | tojson }},
             aiCrypto: {{ ai_crypto | tojson }}
         };
     </script>
