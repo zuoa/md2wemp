@@ -88,10 +88,12 @@ SITE_URL=https://md2we.com
 DEFAULT_OG_IMAGE_URL=https://md2we.com/static/og-cover.png
 SITE_NAME=MD2WE
 SITE_DESCRIPTION=MD2WE 是一个面向微信公众号排版的 Markdown 编辑器
+GA_MEASUREMENT_ID=G-XXXXXXXXXX
 SHARE_STORAGE_DIR=/app/data/shares
 ```
 
 - `SITE_URL` 用于生成分享页、二维码、`canonical`、`robots.txt`、`sitemap.xml` 和 AI 配图 URL
+- `GA_MEASUREMENT_ID` 配置后会在首页和分享页自动加载 Google Analytics 4
 - `SHARE_STORAGE_DIR` 用于显式指定分享页 JSON 和 AI 配图的存储目录
 
 ### AI Config Private Key

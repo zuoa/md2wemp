@@ -84,6 +84,7 @@ SITE_DESCRIPTION = os.getenv(
     "SITE_DESCRIPTION",
     "MD2WE 是一个面向微信公众号排版的 Markdown 编辑器，支持主题排版、Mermaid、AI 辅助创作、分享页和公众号草稿推送。"
 ).strip()
+GOOGLE_ANALYTICS_MEASUREMENT_ID = (os.getenv("GA_MEASUREMENT_ID", "") or "").strip()
 _ACTIVE_SHARE_STORAGE_DIR = None
 UPLOAD_IMAGE_MAX_BYTES = 10 * 1024 * 1024
 UPLOAD_IMAGE_ALLOWED_MIME_TYPES = {
@@ -96,6 +97,14 @@ UPLOAD_IMAGE_ALLOWED_MIME_TYPES = {
 
 class AIConfigCryptoError(ValueError):
     """AI 参数加解密失败。"""
+
+
+@app.context_processor
+def inject_global_template_vars():
+    """注入全局模板变量。"""
+    return {
+        "google_analytics_measurement_id": GOOGLE_ANALYTICS_MEASUREMENT_ID
+    }
 
 
 def normalize_pem_text(raw_value):

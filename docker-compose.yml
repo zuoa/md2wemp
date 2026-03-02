@@ -9,6 +9,7 @@ services:
     environment:
       SITE_URL: https://md2we.com
       DEFAULT_OG_IMAGE_URL: https://md2we.com/static/og-cover.png
+      GA_MEASUREMENT_ID: G-XXXXXXXXXX
     logging:
       driver: json-file
       options:
