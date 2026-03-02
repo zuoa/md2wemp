@@ -200,6 +200,34 @@ python3 scripts/generate_ai_crypto_key.py
 }
 ```
 
+## Claude Skills
+
+仓库内置了可安装的 Claude Skills，目录位于 [`skills/`](./skills/)。
+
+单独安装总控发布 skill `md2we-publish`：
+
+```bash
+python /path/to/install-skill-from-github.py \
+  --repo zuoa/md2we \
+  --path skills/md2we-publish
+```
+
+如果你已经在支持 Skill Installer 的 Codex 环境里，也可以直接使用等价命令：
+
+```bash
+install-skill-from-github.py \
+  --repo zuoa/md2we \
+  --path skills/md2we-publish
+```
+
+安装后会得到一个一键工作流 skill，自动完成：
+
+- 起标题
+- 生成摘要
+- 生成封面配图
+- 校验 render
+- 推送到微信公众号草稿箱
+
 ## Project Structure
 
 ```text

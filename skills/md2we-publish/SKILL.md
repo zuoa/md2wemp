@@ -1,19 +1,18 @@
 ---
-name: md2we-one-click-draft
+name: md2we-publish
 version: "1.0.0"
-description: One-click MD2WE publishing workflow that generates a title, writes a summary, creates a cover image, renders HTML, and pushes the final article to a WeChat Official Account draft. Use when the user wants to publish a Markdown article to 微信公众号草稿箱 in one pass with MD2WE.
+description: One-click MD2WE workflow that generates a title, summary, cover image, validates render output, and pushes a Markdown article to a WeChat Official Account draft. Use when the user wants to publish a Markdown article to 微信公众号草稿箱 in one pass with MD2WE.
 allowed-tools: Read, Write, Edit, Bash, Glob, Grep
 user-invocable: true
 triggers:
-  - "/md2we-one-click-draft"
-  - "one click md2we draft publish"
-  - "publish with md2we in one pass"
-  - "md2we 一键发布草稿"
-  - "一键生成标题摘要封面并推送草稿"
-  - "一键推送公众号草稿"
+  - "/md2we-publish"
+  - "md2we publish"
+  - "publish md2we draft"
+  - "一键发布公众号草稿"
+  - "生成标题摘要封面并推送草稿"
 ---
 
-# md2we-one-click-draft
+# md2we-publish
 
 Use `https://md2we.com` APIs to complete the full publishing flow in one pass:
 
