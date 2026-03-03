@@ -1199,6 +1199,59 @@ def get_default_og_image_url():
     return (os.getenv("DEFAULT_OG_IMAGE_URL", "") or "").strip()
 
 
+def resolve_share_og_image_url(source, page_url="", allow_local_copy=True):
+    """将正文首图解析成可用于 OG 的公开地址。"""
+    source = (source or "").strip()
+    if not source:
+        return ""
+
+    if re.match(r"^https?://", source, re.IGNORECASE):
+        return source
+
+    if source.startswith("//"):
+        public_scheme = urllib.parse.urlparse(get_public_base_url()).scheme or "https"
+        return f"{public_scheme}:{source}"
+
+    if source.startswith("data:"):
+        if not allow_local_copy:
+            return ""
+        raw_bytes, mime_type, _ = fetch_binary_resource(source)
+        filename = save_uploaded_image_bytes(raw_bytes, mime_type)
+        return build_public_url("share_image_file", filename=filename)
+
+    local_path = resolve_local_resource_path(source)
+    if local_path:
+        if not allow_local_copy:
+            return ""
+        mime_type = (mimetypes.guess_type(str(local_path))[0] or "application/octet-stream").lower()
+        filename = save_uploaded_image_bytes(local_path.read_bytes(), mime_type)
+        return build_public_url("share_image_file", filename=filename)
+
+    if source.startswith("/"):
+        return f"{get_public_base_url()}{source}"
+
+    base_url = (page_url or get_public_base_url()).rstrip("/") + "/"
+    return urllib.parse.urljoin(base_url, source)
+
+
+def build_share_og_image_url(md_text, html_content, page_url="", allow_local_copy=True):
+    """优先从正文首图生成分享卡片图片地址，没有则回退默认封面。"""
+    first_image_source = (
+        extract_first_markdown_image_source(md_text)
+        or extract_first_html_image_source(html_content)
+    )
+    try:
+        resolved_url = resolve_share_og_image_url(
+            first_image_source,
+            page_url=page_url,
+            allow_local_copy=allow_local_copy
+        )
+    except Exception as exc:
+        app.logger.warning("Unable to resolve share og image source=%s error=%s", first_image_source, exc)
+        resolved_url = ""
+    return resolved_url or get_default_og_image_url()
+
+
 def normalize_iso_timestamp(iso_text):
     """将时间统一为 ISO 8601 格式。"""
     if not iso_text:
@@ -1230,7 +1283,7 @@ def build_homepage_structured_data(canonical_url):
     }
 
 
-def build_share_structured_data(title, description, canonical_url, published_at):
+def build_share_structured_data(title, description, canonical_url, published_at, image_url=""):
     """构建分享页结构化数据。"""
     structured_data = {
         "@context": "https://schema.org",
@@ -1253,6 +1306,9 @@ def build_share_structured_data(title, description, canonical_url, published_at)
     if published_at:
         structured_data["datePublished"] = published_at
         structured_data["dateModified"] = published_at
+
+    if image_url:
+        structured_data["image"] = image_url
 
     return structured_data
 
@@ -1412,6 +1468,7 @@ def build_share_payload(md_text, theme, code_theme, font_size, background, share
     excerpt = plain_text[:160].strip()
     html = process_markdown(md_text, theme, code_theme, font_size, background)
     created_at = datetime.now(timezone.utc).isoformat()
+    og_image_url = build_share_og_image_url(md_text, html, page_url=share_url, allow_local_copy=True)
 
     return {
         "id": share_id,
@@ -1419,6 +1476,7 @@ def build_share_payload(md_text, theme, code_theme, font_size, background, share
         "excerpt": excerpt,
         "markdown": md_text,
         "html": html,
+        "og_image_url": og_image_url,
         "share_url": share_url,
         "created_at": created_at,
         "settings": {
@@ -3194,8 +3252,11 @@ def share_article(share_id):
     title = payload.get("title") or find_first_heading(markdown_text) or "未命名文章"
     excerpt = trim_meta_text(payload.get("excerpt") or extract_plain_text_from_markdown(markdown_text), 180)
     published_at = normalize_iso_timestamp(payload.get("created_at"))
-    og_image_url = get_default_og_image_url()
     canonical_url = build_public_url("share_article", share_id=share_id)
+    og_image_url = (
+        (payload.get("og_image_url") or "").strip()
+        or build_share_og_image_url(markdown_text, article_html, page_url=canonical_url, allow_local_copy=False)
+    )
     page_qr_svg = create_share_qr_svg(canonical_url)
 
     return render_template(
@@ -3216,7 +3277,8 @@ def share_article(share_id):
             title,
             excerpt or title,
             canonical_url,
-            published_at
+            published_at,
+            og_image_url
         )
     )
 
