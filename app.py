@@ -852,6 +852,35 @@ THEMES = {
             "h2_style": "finance_h2",     # 金融风格副标题
             "h3_style": "left_border"
         }
+    },
+    "paper_journal": {
+        "name": "奶油清单",
+        "colors": ["#4E463F", "#D87243", "#E8D5BC"],
+        "description": "复古桌面、纸感纹理、打字机字体与番茄橙点缀",
+        "preview_variant": "checklist_window",
+        "styles": {
+            "bg_color": "#F6F0E6",
+            "blockquote_bg": "#F0E7DA",
+            "code_bg": "#EFE4D3",
+            "border_radius": "18px",
+            "shadow": "0 10px 24px rgba(120, 93, 67, 0.08), inset 0 1px 0 rgba(255,255,255,0.72)",
+            "h1_style": "soft_panel",
+            "h2_style": "task_label",
+            "h3_style": "mono_divider",
+            "text_color": "#4E463F",
+            "secondary_text": "#8A7D70",
+            "font_family": "'Iowan Old Style', 'Palatino Linotype', 'Noto Serif SC', 'Songti SC', serif",
+            "heading_font_family": "'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', 'Liberation Mono', 'Courier New', monospace",
+            "wrapper_background_image": "radial-gradient(circle at 1px 1px, rgba(162, 145, 126, 0.14) 1px, transparent 0), linear-gradient(180deg, rgba(255,255,255,0.45), rgba(255,255,255,0))",
+            "wrapper_background_size": "8px 8px, 100% 100%",
+            "wrapper_border": "1px solid rgba(184, 166, 145, 0.62)",
+            "wrapper_padding": "24px 22px",
+            "wrapper_inner_shadow": "inset 0 0 0 1px rgba(255,255,255,0.35)",
+            "divider_style": "1px dashed rgba(216, 114, 67, 0.6)",
+            "image_shadow": "0 10px 22px rgba(120, 93, 67, 0.12)",
+            "line_height": "1.92",
+            "paragraph_margin": "14px 0"
+        }
     }
 }
 
@@ -1588,6 +1617,23 @@ def normalize_render_options(theme="default", code_theme="github", font_size="me
 
 def build_theme_cards():
     """为主题卡片补充前景色。"""
+    preview_variants = {
+        "default": "editorial_sheet",
+        "sport": "scoreboard",
+        "chinese": "seal_notice",
+        "cyberpunk": "neon_console",
+        "ocean": "wave_card",
+        "forest": "organic_notes",
+        "sunset": "sun_glow",
+        "lavender": "ribbon_story",
+        "coffee": "editorial_sheet",
+        "minimalist": "minimal_column",
+        "tech": "blueprint_panel",
+        "retro": "typewriter_card",
+        "government": "formal_notice",
+        "finance": "market_brief",
+        "paper_journal": "checklist_window",
+    }
     themed_cards = {}
     for key, theme in THEMES.items():
         theme_copy = dict(theme)
@@ -1596,6 +1642,7 @@ def build_theme_cards():
         r, g, b = int(bg_hex[0:2], 16), int(bg_hex[2:4], 16), int(bg_hex[4:6], 16)
         is_dark = (r * 0.299 + g * 0.587 + b * 0.114) < 128
         theme_copy["card_text_color"] = theme["styles"].get("text_color", "#ffffff") if is_dark else "#1f2937"
+        theme_copy["preview_variant"] = theme.get("preview_variant") or preview_variants.get(key, "editorial_sheet")
         themed_cards[key] = theme_copy
     return themed_cards
 
@@ -3208,11 +3255,22 @@ def generate_styled_html(content, theme_config, code_theme, font_config, bg_conf
     h3_style_type = styles.get("h3_style", "plain")
     text_color = styles.get("text_color", "#333")
     secondary_text_color = styles.get("secondary_text", "#666")
+    font_family = styles.get("font_family", "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif")
+    heading_font_family = styles.get("heading_font_family", font_family)
+    wrapper_background_image = styles.get("wrapper_background_image", "none")
+    wrapper_background_size = styles.get("wrapper_background_size", "auto")
+    wrapper_border = styles.get("wrapper_border", "none")
+    wrapper_padding = styles.get("wrapper_padding", "20px")
+    wrapper_inner_shadow = styles.get("wrapper_inner_shadow", "")
+    divider_style = styles.get("divider_style", "")
+    image_shadow = styles.get("image_shadow", shadow)
+    line_height = styles.get("line_height", "1.8")
+    paragraph_margin = styles.get("paragraph_margin", "12px 0")
 
     # 标题样式生成函数 - 精细化设计，符合各主题特质
     def get_h1_style(style_type, color1, color2, color3, radius, bg_color):
         """生成h1样式 - 更精致的设计"""
-        base = "margin: 28px 0 18px; font-size: 1.75em; font-weight: 700; letter-spacing: 0.5px;"
+        base = f"margin: 28px 0 18px; font-size: 1.75em; font-weight: 700; letter-spacing: 0.5px; font-family: {heading_font_family};"
 
         styles = {
             # Default - 简洁优雅
@@ -3239,12 +3297,14 @@ def generate_styled_html(content, theme_config, code_theme, font_config, bg_conf
             "government": f"{base} padding: 14px 20px; color: {color1}; text-align: center; border-bottom: 3px solid {color3}; background: linear-gradient(to bottom, rgba({_hex_to_rgb(color3)}, 0.08) 0%, transparent 100%); font-weight: 700; letter-spacing: 2px;",
             # Finance - 金融风格
             "finance": f"{base} padding: 14px 0; color: {color1}; border-bottom: 3px double {color3}; position: relative;",
+            # Paper Journal - 纸感面板与番茄橙标签
+            "soft_panel": f"{base} padding: 14px 18px 12px; color: {color1}; background: linear-gradient(180deg, rgba(255,255,255,0.58), rgba({_hex_to_rgb(color3)}, 0.18)); border: 1px solid rgba({_hex_to_rgb(color3)}, 0.78); border-left: 6px solid {color2}; border-radius: {radius}; box-shadow: inset 0 1px 0 rgba(255,255,255,0.75), 0 6px 18px rgba({_hex_to_rgb(color1)}, 0.08); text-transform: uppercase;",
         }
         return styles.get(style_type, styles["bottom_border"])
 
     def get_h2_style(style_type, color1, color2, color3, radius, bg_color):
         """生成h2样式 - 更精致的设计"""
-        base = "margin: 22px 0 14px; font-size: 1.4em; font-weight: 600; letter-spacing: 0.3px;"
+        base = f"margin: 22px 0 14px; font-size: 1.4em; font-weight: 600; letter-spacing: 0.3px; font-family: {heading_font_family};"
 
         styles = {
             # Default - 左边框强调
@@ -3269,12 +3329,14 @@ def generate_styled_html(content, theme_config, code_theme, font_config, bg_conf
             "government_h2": f"{base} padding-left: 16px; border-left: 4px solid {color1}; color: {color1}; background: linear-gradient(90deg, rgba({_hex_to_rgb(color3)}, 0.1) 0%, transparent 50%);",
             # Finance - 金融副标题
             "finance_h2": f"{base} padding: 8px 16px; background: linear-gradient(90deg, {color1} 0%, {color2} 100%); color: #fff; border-radius: {radius}; display: inline-block; box-shadow: 0 2px 8px rgba({_hex_to_rgb(color1)}, 0.2);",
+            # Paper Journal - 任务标签
+            "task_label": f"{base} padding: 10px 14px; color: {color1}; background: rgba(255,255,255,0.42); border: 1px solid rgba({_hex_to_rgb(color3)}, 0.88); border-left: 4px solid {color2}; border-radius: 12px; display: inline-block; box-shadow: inset 0 1px 0 rgba(255,255,255,0.55);",
         }
         return styles.get(style_type, styles["left_border"])
 
     def get_h3_style(style_type, color1, color2, color3, radius, bg_color):
         """生成h3样式 - 更精致的设计"""
-        base = "margin: 18px 0 10px; font-size: 1.15em; font-weight: 600; letter-spacing: 0.2px;"
+        base = f"margin: 18px 0 10px; font-size: 1.15em; font-weight: 600; letter-spacing: 0.2px; font-family: {heading_font_family};"
 
         styles = {
             # Default - 纯文字
@@ -3287,6 +3349,8 @@ def generate_styled_html(content, theme_config, code_theme, font_config, bg_conf
             "dotted_bottom": f"{base} padding-bottom: 6px; border-bottom: 2px dotted {color3}; color: {color1};",
             # Lavender - 虚线下边框
             "dashed_bottom": f"{base} padding-bottom: 6px; border-bottom: 2px dashed {color3}; color: {color1};",
+            # Paper Journal - 打字机分隔线
+            "mono_divider": f"{base} padding-bottom: 8px; border-bottom: 1px dashed rgba({_hex_to_rgb(color2)}, 0.75); color: {color1}; text-transform: uppercase;",
         }
         return styles.get(style_type, styles["plain"])
 
@@ -3308,29 +3372,37 @@ def generate_styled_html(content, theme_config, code_theme, font_config, bg_conf
     # 微信支持的样式模板
     wrapper_style = f"""
         background-color: {final_bg_color};
-        padding: 20px;
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+        background-image: {wrapper_background_image};
+        background-size: {wrapper_background_size};
+        padding: {wrapper_padding};
+        font-family: {font_family};
         font-size: {base_font};
         color: {text_color};
-        line-height: 1.8;
+        line-height: {line_height};
         word-wrap: break-word;
         border-radius: {border_radius};
         box-shadow: {shadow};
+        border: {wrapper_border};
+        position: relative;
     """
+    if wrapper_inner_shadow:
+        wrapper_style += f" box-shadow: {shadow}, {wrapper_inner_shadow};"
 
     p_style = f"""
-        margin: 12px 0;
+        margin: {paragraph_margin};
         text-align: justify;
         color: {text_color};
+        letter-spacing: 0.02em;
     """
 
     blockquote_style = f"""
-        margin: 15px 0;
-        padding: 10px 15px;
+        margin: 18px 0;
+        padding: 12px 16px;
         border-left: 4px solid {accent_color};
         background-color: {blockquote_bg};
         color: {secondary_text_color};
         border-radius: {border_radius};
+        box-shadow: inset 0 1px 0 rgba(255,255,255,0.45);
     """
 
     # 行内代码样式 - 根据背景亮度调整文字颜色
@@ -3455,6 +3527,10 @@ def generate_styled_html(content, theme_config, code_theme, font_config, bg_conf
         # 金融风格 - 深蓝+金色
         th_bg = f"linear-gradient(135deg, {primary_color}, {secondary_color})"
         th_text_color = "#ffffff"
+    elif h1_style_type in ["soft_panel"]:
+        # Paper Journal - 米色纸张 + 番茄橙强调
+        th_bg = f"linear-gradient(180deg, rgba({_hex_to_rgb(accent_color)}, 0.62), rgba({_hex_to_rgb(accent_color)}, 0.24))"
+        th_text_color = primary_color
     else:
         # 默认 - 使用 secondary_color（蓝色等鲜艳色）
         th_bg = secondary_color
@@ -3504,9 +3580,8 @@ def generate_styled_html(content, theme_config, code_theme, font_config, bg_conf
     hr_style = f"""
         margin: 20px 0;
         border: none;
-        height: 2px;
-        background: linear-gradient(to right, {primary_color}, {secondary_color});
-        border-radius: 2px;
+        height: 0;
+        border-top: {divider_style or f"2px solid {secondary_color}"};
     """
 
     img_style = f"""
@@ -3515,6 +3590,7 @@ def generate_styled_html(content, theme_config, code_theme, font_config, bg_conf
         display: block;
         margin: 15px auto;
         border-radius: {border_radius};
+        box-shadow: {image_shadow};
     """
 
     # 应用样式到内容

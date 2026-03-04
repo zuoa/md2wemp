@@ -307,7 +307,153 @@
                     <div class="theme-grid" id="themeGrid">
                         {% for key, theme in themes.items() %}
                         <div class="theme-card" data-theme="{{ key }}"
-                             style="background-color: {{ theme.styles.bg_color }}; border-radius: {{ theme.styles.border_radius }}; color: {{ theme.card_text_color }};">
+                             style="background-color: {{ theme.styles.bg_color }}; border-radius: {{ theme.styles.border_radius }}; color: {{ theme.card_text_color }}; --theme-primary: {{ theme.colors[0] }}; --theme-secondary: {{ theme.colors[1] }}; --theme-accent: {{ theme.colors[2] }}; --theme-card-text: {{ theme.card_text_color }};">
+                            <div class="theme-preview {% if theme.preview_variant %}theme-preview-{{ theme.preview_variant }}{% endif %}">
+                                {% if theme.preview_variant == 'checklist_window' %}
+                                <div class="checklist-window">
+                                    <div class="checklist-window-header">
+                                        <span class="window-dots"></span>
+                                        <span class="window-date">Mar 4</span>
+                                    </div>
+                                    <div class="checklist-window-body">
+                                        <div class="checklist-row is-done">
+                                            <span class="checklist-box">x</span>
+                                            <span class="checklist-label">Read</span>
+                                            <span class="checklist-state">Done</span>
+                                        </div>
+                                        <div class="checklist-row">
+                                            <span class="checklist-box"></span>
+                                            <span class="checklist-label">Walk</span>
+                                            <span class="checklist-state">-</span>
+                                        </div>
+                                        <div class="checklist-progress">
+                                            <span class="checklist-progress-bar"></span>
+                                        </div>
+                                    </div>
+                                </div>
+                                {% elif theme.preview_variant == 'editorial_sheet' %}
+                                <div class="preview-scene preview-scene-editorial">
+                                    <span class="scene-kicker"></span>
+                                    <span class="scene-title"></span>
+                                    <span class="scene-divider"></span>
+                                    <span class="scene-line line-strong"></span>
+                                    <span class="scene-line"></span>
+                                    <span class="scene-line line-short"></span>
+                                </div>
+                                {% elif theme.preview_variant == 'scoreboard' %}
+                                <div class="preview-scene preview-scene-scoreboard">
+                                    <div class="scene-banner">
+                                        <span class="scene-chip"></span>
+                                        <span class="scene-chip is-ghost"></span>
+                                    </div>
+                                    <div class="scene-bars">
+                                        <span class="scene-bar bar-lg"></span>
+                                        <span class="scene-bar bar-md"></span>
+                                        <span class="scene-bar bar-sm"></span>
+                                    </div>
+                                </div>
+                                {% elif theme.preview_variant == 'seal_notice' %}
+                                <div class="preview-scene preview-scene-seal">
+                                    <span class="scene-frame-title"></span>
+                                    <span class="scene-frame-rule"></span>
+                                    <span class="scene-line"></span>
+                                    <span class="scene-line line-short"></span>
+                                    <span class="scene-seal"></span>
+                                </div>
+                                {% elif theme.preview_variant == 'neon_console' %}
+                                <div class="preview-scene preview-scene-neon">
+                                    <span class="scene-neon-title"></span>
+                                    <span class="scene-neon-subtitle"></span>
+                                    <div class="scene-terminal-lines">
+                                        <span class="scene-terminal-line"></span>
+                                        <span class="scene-terminal-line line-short"></span>
+                                        <span class="scene-terminal-line line-mid"></span>
+                                    </div>
+                                </div>
+                                {% elif theme.preview_variant == 'wave_card' %}
+                                <div class="preview-scene preview-scene-wave">
+                                    <span class="scene-title"></span>
+                                    <span class="scene-wave"></span>
+                                    <div class="scene-bubbles">
+                                        <span class="scene-bubble"></span>
+                                        <span class="scene-bubble is-small"></span>
+                                        <span class="scene-bubble is-tiny"></span>
+                                    </div>
+                                </div>
+                                {% elif theme.preview_variant == 'organic_notes' %}
+                                <div class="preview-scene preview-scene-organic">
+                                    <span class="scene-leaf-title"></span>
+                                    <div class="scene-organic-list">
+                                        <span class="scene-leaf-row"></span>
+                                        <span class="scene-leaf-row is-short"></span>
+                                        <span class="scene-leaf-row"></span>
+                                    </div>
+                                </div>
+                                {% elif theme.preview_variant == 'sun_glow' %}
+                                <div class="preview-scene preview-scene-sun">
+                                    <span class="scene-glow-ribbon"></span>
+                                    <span class="scene-title"></span>
+                                    <span class="scene-line"></span>
+                                    <span class="scene-line line-short"></span>
+                                </div>
+                                {% elif theme.preview_variant == 'ribbon_story' %}
+                                <div class="preview-scene preview-scene-ribbon">
+                                    <span class="scene-ribbon-tag"></span>
+                                    <span class="scene-title"></span>
+                                    <div class="scene-ribbon-lines">
+                                        <span class="scene-line"></span>
+                                        <span class="scene-line line-short"></span>
+                                    </div>
+                                </div>
+                                {% elif theme.preview_variant == 'minimal_column' %}
+                                <div class="preview-scene preview-scene-minimal">
+                                    <span class="scene-min-title"></span>
+                                    <span class="scene-min-rule"></span>
+                                    <span class="scene-line"></span>
+                                    <span class="scene-line"></span>
+                                    <span class="scene-line line-short"></span>
+                                </div>
+                                {% elif theme.preview_variant == 'blueprint_panel' %}
+                                <div class="preview-scene preview-scene-blueprint">
+                                    <span class="scene-blueprint-chip"></span>
+                                    <span class="scene-blueprint-grid"></span>
+                                    <div class="scene-blueprint-lines">
+                                        <span class="scene-line"></span>
+                                        <span class="scene-line line-mid"></span>
+                                        <span class="scene-line line-short"></span>
+                                    </div>
+                                </div>
+                                {% elif theme.preview_variant == 'typewriter_card' %}
+                                <div class="preview-scene preview-scene-typewriter">
+                                    <span class="scene-type-title"></span>
+                                    <span class="scene-type-rule"></span>
+                                    <span class="scene-line"></span>
+                                    <span class="scene-line line-mid"></span>
+                                    <span class="scene-stamp"></span>
+                                </div>
+                                {% elif theme.preview_variant == 'formal_notice' %}
+                                <div class="preview-scene preview-scene-formal">
+                                    <span class="scene-formal-header"></span>
+                                    <span class="scene-formal-rule"></span>
+                                    <span class="scene-line"></span>
+                                    <span class="scene-line line-mid"></span>
+                                    <span class="scene-formal-badge"></span>
+                                </div>
+                                {% elif theme.preview_variant == 'market_brief' %}
+                                <div class="preview-scene preview-scene-market">
+                                    <div class="scene-market-top">
+                                        <span class="scene-market-pill"></span>
+                                        <span class="scene-market-pill is-gold"></span>
+                                    </div>
+                                    <div class="scene-market-bars">
+                                        <span class="scene-market-bar h1"></span>
+                                        <span class="scene-market-bar h2"></span>
+                                        <span class="scene-market-bar h3"></span>
+                                        <span class="scene-market-bar h4"></span>
+                                    </div>
+                                </div>
+                                {% endif %}
+                            </div>
                             <div class="theme-colors">
                                 {% for color in theme.colors %}
                                 <span class="color-dot" style="background-color: {{ color }}"></span>
