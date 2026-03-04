@@ -81,6 +81,7 @@ CORS(app)
 DEFAULT_SHARE_STORAGE_DIR = Path(app.root_path) / "data" / "shares"
 AI_CRYPTO_KEY_PATH = Path(app.instance_path) / "ai_config_private_key.pem"
 AI_CRYPTO_FALLBACK_KEY_PATH = Path(tempfile.gettempdir()) / "md2we" / "ai_config_private_key.pem"
+ILLUSTRATION_JOB_STORAGE_DIR = Path(app.instance_path) / "illustration_jobs"
 WECHAT_API_BASE = "https://api.weixin.qq.com/cgi-bin"
 WECHAT_INLINE_IMAGE_MAX_BYTES = 1024 * 1024
 WECHAT_THUMB_IMAGE_MAX_BYTES = 64 * 1024
@@ -100,7 +101,6 @@ UPLOAD_IMAGE_ALLOWED_MIME_TYPES = {
     "image/gif"
 }
 ILLUSTRATION_JOB_TTL_SECONDS = 60 * 60
-_ILLUSTRATION_JOBS = {}
 _ILLUSTRATION_JOBS_LOCK = threading.Lock()
 AI_REQUEST_MAX_ATTEMPTS = 3
 AI_REQUEST_RETRY_BACKOFF_SECONDS = 2
@@ -138,19 +138,77 @@ def get_utc_iso_timestamp():
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
+def ensure_illustration_job_storage_dir():
+    """确保一键配图任务目录存在。"""
+    ILLUSTRATION_JOB_STORAGE_DIR.mkdir(parents=True, exist_ok=True)
+    return ILLUSTRATION_JOB_STORAGE_DIR
+
+
+def get_illustration_job_file_path(job_id):
+    """返回任务文件路径。"""
+    return ensure_illustration_job_storage_dir() / f"{job_id}.json"
+
+
+def load_illustration_job_from_path(job_path):
+    """从磁盘读取任务数据。"""
+    try:
+        with job_path.open("r", encoding="utf-8") as fp:
+            job = json.load(fp)
+    except (FileNotFoundError, json.JSONDecodeError, OSError, ValueError):
+        return None
+
+    if not isinstance(job, dict):
+        return None
+    return job
+
+
+def persist_illustration_job(job):
+    """使用原子替换写入任务状态，供多进程共享读取。"""
+    if not isinstance(job, dict):
+        raise ValueError("illustration job must be a dict")
+
+    ensure_illustration_job_storage_dir()
+    job_id = (job.get("job_id") or "").strip()
+    if not job_id:
+        raise ValueError("illustration job_id is required")
+
+    job_path = get_illustration_job_file_path(job_id)
+    with tempfile.NamedTemporaryFile(
+        "w",
+        encoding="utf-8",
+        dir=str(job_path.parent),
+        delete=False
+    ) as fp:
+        json.dump(job, fp, ensure_ascii=False, indent=2)
+        temp_path = Path(fp.name)
+    os.replace(temp_path, job_path)
+
+
 def cleanup_illustration_jobs():
     """清理过期的一键配图任务。"""
     now = get_utc_timestamp()
-    expired_job_ids = []
+    ensure_illustration_job_storage_dir()
 
     with _ILLUSTRATION_JOBS_LOCK:
-        for job_id, job in _ILLUSTRATION_JOBS.items():
+        for job_path in ILLUSTRATION_JOB_STORAGE_DIR.glob("*.json"):
+            job = load_illustration_job_from_path(job_path)
+            if not job:
+                try:
+                    job_path.unlink()
+                except FileNotFoundError:
+                    pass
+                except OSError:
+                    continue
+                continue
+
             updated_at_ts = float(job.get("updated_at_ts") or 0)
             if now - updated_at_ts > ILLUSTRATION_JOB_TTL_SECONDS:
-                expired_job_ids.append(job_id)
-
-        for job_id in expired_job_ids:
-            _ILLUSTRATION_JOBS.pop(job_id, None)
+                try:
+                    job_path.unlink()
+                except FileNotFoundError:
+                    pass
+                except OSError:
+                    continue
 
 
 def create_illustration_job(style_key, public_base_url):
@@ -181,7 +239,7 @@ def create_illustration_job(style_key, public_base_url):
         "public_base_url": public_base_url
     }
     with _ILLUSTRATION_JOBS_LOCK:
-        _ILLUSTRATION_JOBS[job_id] = job
+        persist_illustration_job(job)
     return copy.deepcopy(job)
 
 
@@ -189,7 +247,7 @@ def update_illustration_job(job_id, **changes):
     """更新一键配图任务状态。"""
     cleanup_illustration_jobs()
     with _ILLUSTRATION_JOBS_LOCK:
-        job = _ILLUSTRATION_JOBS.get(job_id)
+        job = load_illustration_job_from_path(get_illustration_job_file_path(job_id))
         if not job:
             return None
 
@@ -199,6 +257,7 @@ def update_illustration_job(job_id, **changes):
 
         job["updated_at"] = get_utc_iso_timestamp()
         job["updated_at_ts"] = get_utc_timestamp()
+        persist_illustration_job(job)
         return copy.deepcopy(job)
 
 
@@ -206,7 +265,7 @@ def get_illustration_job(job_id):
     """读取一键配图任务。"""
     cleanup_illustration_jobs()
     with _ILLUSTRATION_JOBS_LOCK:
-        job = _ILLUSTRATION_JOBS.get(job_id)
+        job = load_illustration_job_from_path(get_illustration_job_file_path(job_id))
         if not job:
             return None
         return copy.deepcopy(job)

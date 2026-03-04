@@ -140,6 +140,7 @@ python3 scripts/generate_ai_crypto_key.py
 - 只抽取核心段落，不超过 5 个
 - 文本模型先返回插图计划，再逐段生图
 - 生成后自动将 Markdown 图片语法精确插回原文
+- 任务状态保存在 `instance/illustration_jobs/*.json`，Docker 多 worker 下也可轮询同一任务
 
 ### SEO
 
