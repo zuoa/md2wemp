@@ -2286,7 +2286,7 @@ def openai_api_request(path, payload, timeout=60, ai_config=None, capability="te
             message = body
             try:
                 error_data = json.loads(body)
-                message = error_data.get("error", {}).get("message") or body
+                message = extract_openai_error_message(error_data, body)
             except json.JSONDecodeError:
                 pass
 
@@ -2333,14 +2333,56 @@ def openai_api_request(path, payload, timeout=60, ai_config=None, capability="te
             raise RuntimeError(normalize_ai_exception_message(exc, capability=capability, attempts=attempt)) from exc
 
 
+def extract_openai_error_message(error_data, fallback_message=""):
+    """从不同形态的错误体里提取可读错误信息。"""
+    if isinstance(error_data, dict):
+        nested_error = error_data.get("error")
+        if isinstance(nested_error, dict):
+            nested_message = nested_error.get("message")
+            if isinstance(nested_message, str) and nested_message.strip():
+                return nested_message.strip()
+        elif isinstance(nested_error, str) and nested_error.strip():
+            return nested_error.strip()
+
+        message = error_data.get("message") or error_data.get("errmsg")
+        if isinstance(message, str) and message.strip():
+            return message.strip()
+        return fallback_message
+
+    if isinstance(error_data, list):
+        for item in error_data:
+            candidate = extract_openai_error_message(item, "") if isinstance(item, (dict, list)) else item
+            if isinstance(candidate, str) and candidate.strip():
+                return candidate.strip()
+        return fallback_message
+
+    if isinstance(error_data, str) and error_data.strip():
+        return error_data.strip()
+    return fallback_message
+
+
 def extract_chat_completion_text(response_data):
     """从 Chat Completions 响应中提取文本。"""
-    choices = response_data.get("choices", [])
+    if isinstance(response_data, dict):
+        choices = response_data.get("choices", [])
+    elif isinstance(response_data, list):
+        if response_data and isinstance(response_data[0], dict) and "choices" in response_data[0]:
+            choices = response_data[0].get("choices", [])
+        else:
+            choices = response_data
+    else:
+        return ""
+
+    if isinstance(choices, dict):
+        choices = [choices]
     if not choices:
         return ""
 
-    message = choices[0].get("message", {})
+    first_choice = choices[0] if isinstance(choices[0], dict) else {}
+    message = first_choice.get("message", {})
     content = message.get("content", "")
+    if not content and isinstance(first_choice.get("content"), (str, list)):
+        content = first_choice.get("content")
     if isinstance(content, str):
         return content.strip()
 
@@ -2360,11 +2402,23 @@ def extract_chat_completion_text(response_data):
 
 def is_chat_completion_truncated(response_data):
     """判断 Chat Completions 是否因 token 上限被截断。"""
-    choices = response_data.get("choices", [])
+    if isinstance(response_data, dict):
+        choices = response_data.get("choices", [])
+    elif isinstance(response_data, list):
+        if response_data and isinstance(response_data[0], dict) and "choices" in response_data[0]:
+            choices = response_data[0].get("choices", [])
+        else:
+            choices = response_data
+    else:
+        return False
+
+    if isinstance(choices, dict):
+        choices = [choices]
     if not choices:
         return False
 
-    finish_reason = str(choices[0].get("finish_reason", "") or "").strip().lower()
+    first_choice = choices[0] if isinstance(choices[0], dict) else {}
+    finish_reason = str(first_choice.get("finish_reason", "") or "").strip().lower()
     return finish_reason in {"length", "max_tokens"}
 
 
@@ -2591,7 +2645,22 @@ def generate_ai_summary(md_text, focus_prompt="", ai_config=None):
 
 def extract_generated_image(response_data):
     """从 Images API 响应中提取图片。"""
-    for item in response_data.get("data", []):
+    data_items = []
+    if isinstance(response_data, dict):
+        if response_data.get("b64_json"):
+            data_items = [response_data]
+        else:
+            raw_data = response_data.get("data", [])
+            if isinstance(raw_data, dict):
+                data_items = [raw_data]
+            elif isinstance(raw_data, list):
+                data_items = raw_data
+    elif isinstance(response_data, list):
+        data_items = response_data
+
+    for item in data_items:
+        if not isinstance(item, dict):
+            continue
         image_base64 = item.get("b64_json")
         if image_base64:
             return image_base64, item.get("revised_prompt", "")
